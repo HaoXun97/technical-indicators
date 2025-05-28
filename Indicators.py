@@ -1,11 +1,13 @@
 import yfinance as yf
 import pandas as pd
+from pandas import DataFrame, Series, Index
 import numpy as np
 import talib
+from talib._ta_lib import MA_Type
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Optional, List, Any, Union
+from typing import Dict, Optional, List, Any, Union, Literal
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
@@ -72,37 +74,35 @@ class TechnicalIndicators:
     atr: Optional[float] = None
     cci: Optional[float] = None
     willr: Optional[float] = None
-    obv: Optional[float] = None
-    volume_ma: Optional[float] = None
 
 class DataProvider:
     """數據提供者類別"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = logging.getLogger(__name__)
         self._cache = {}
     
     def get_stock_data(self, symbol: str, period: Union[Period, str], 
-                      interval: Union[TimeInterval, str], use_cache: bool = True) -> Optional[pd.DataFrame]:
+                      interval: Union[TimeInterval, str], use_cache: bool = True) -> Optional[DataFrame]:
         """獲取股票數據"""
         try:
-            formatted_symbol = self._format_symbol(symbol)
+            formatted_symbol: str = self._format_symbol(symbol)
             
             # 提取枚舉值
-            period_str = period.value if isinstance(period, Period) else period
-            interval_str = interval.value if isinstance(interval, TimeInterval) else interval
+            period_str: str | Any = period.value if isinstance(period, Period) else period
+            interval_str: str | Any = interval.value if isinstance(interval, TimeInterval) else interval
             
-            cache_key = f"{formatted_symbol}_{period_str}_{interval_str}"
+            cache_key: str = f"{formatted_symbol}_{period_str}_{interval_str}"
             
             if use_cache and cache_key in self._cache:
                 self.logger.info(f"從快取獲取 {formatted_symbol} 數據")
                 return self._cache[cache_key]
             
             # 調整期間以避免API限制
-            adjusted_period = self._adjust_period_for_interval(period_str, interval_str)
+            adjusted_period: str = self._adjust_period_for_interval(period_str, interval_str)
             
-            ticker = yf.Ticker(formatted_symbol)
-            data = ticker.history(period=adjusted_period, interval=interval_str)
+            ticker: yf.Ticker = yf.Ticker(formatted_symbol)
+            data: DataFrame = ticker.history(period=adjusted_period, interval=interval_str)
             
             if data.empty:
                 self.logger.warning(f"無法獲取 {formatted_symbol} 的數據")
@@ -139,24 +139,24 @@ class DataProvider:
 class IndicatorCalculator:
     """技術指標計算器"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = logging.getLogger(__name__)
     
-    def calculate_all_indicators(self, data: pd.DataFrame) -> Dict[str, pd.Series]:
+    def calculate_all_indicators(self, data: DataFrame) -> Dict[str, Series]:
         """計算所有技術指標"""
-        if not isinstance(data, pd.DataFrame) or data.empty:
+        if not isinstance(data, DataFrame) or data.empty:
             raise ValueError("數據必須是非空的 DataFrame")
         
         if len(data) < 60:
             self.logger.warning("數據長度不足，某些指標可能無法計算")
         
         # 轉換為 numpy arrays
-        high = data['High'].values.astype('float64')
-        low = data['Low'].values.astype('float64')
-        close = data['Close'].values.astype('float64')
-        volume = data['Volume'].values.astype('float64')
+        high: np.ndarray = data['High'].values.astype('float64')
+        low: np.ndarray = data['Low'].values.astype('float64')
+        close: np.ndarray = data['Close'].values.astype('float64')
+        volume: np.ndarray = data['Volume'].values.astype('float64')
         
-        indicators = {}
+        indicators: dict[str, Series] = {}
         
         try:
             # RSI 指標
@@ -183,41 +183,41 @@ class IndicatorCalculator:
             
         return indicators
     
-    def _calculate_rsi(self, close: np.ndarray, index: pd.Index) -> Dict[str, pd.Series]:
+    def _calculate_rsi(self, close: np.ndarray, index: Index) -> Dict[str, Series]:
         """計算 RSI 指標"""
         return {
-            'RSI(5)': pd.Series(talib.RSI(close, timeperiod=5), index=index),
-            'RSI(7)': pd.Series(talib.RSI(close, timeperiod=7), index=index),
-            'RSI(10)': pd.Series(talib.RSI(close, timeperiod=10), index=index),
-            'RSI(14)': pd.Series(talib.RSI(close, timeperiod=14), index=index),
-            'RSI(21)': pd.Series(talib.RSI(close, timeperiod=21), index=index),
+            'RSI(5)': Series(talib.RSI(close, timeperiod=5), index=index),
+            'RSI(7)': Series(talib.RSI(close, timeperiod=7), index=index),
+            'RSI(10)': Series(talib.RSI(close, timeperiod=10), index=index),
+            'RSI(14)': Series(talib.RSI(close, timeperiod=14), index=index),
+            'RSI(21)': Series(talib.RSI(close, timeperiod=21), index=index),
         }
     
-    def _calculate_macd(self, close: np.ndarray, index: pd.Index) -> Dict[str, pd.Series]:
+    def _calculate_macd(self, close: np.ndarray, index: Index) -> Dict[str, Series]:
         """計算 MACD 指標"""
         macd_line, signal_line, macd_histogram = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
         return {
-            'DIF': pd.Series(macd_line, index=index),
-            'MACD': pd.Series(signal_line, index=index),
-            'MACD_Histogram': pd.Series(macd_histogram, index=index),
+            'DIF': Series(macd_line, index=index),
+            'MACD': Series(signal_line, index=index),
+            'MACD_Histogram': Series(macd_histogram, index=index),
         }
     
     def _calculate_stochastic(self, high: np.ndarray, low: np.ndarray, 
-                            close: np.ndarray, index: pd.Index) -> Dict[str, pd.Series]:
+                            close: np.ndarray, index: Index) -> Dict[str, Series]:
         """計算 KDJ 指標"""
 
         # 計算 RSV (Raw Stochastic Value)
         # RSV = (收盤價 - 最近 n 日最低價) / (最近 n 日最高價 - 最近 n 日最低價) * 100
         n = 9  # KD 指標的週期參數
         
-        rsv = np.full(len(close), np.nan)
-        k_values = np.full(len(close), np.nan)
-        d_values = np.full(len(close), np.nan)
+        rsv: np.ndarray = np.full(len(close), np.nan)
+        k_values: np.ndarray = np.full(len(close), np.nan)
+        d_values: np.ndarray = np.full(len(close), np.nan)
         
         for i in range(n-1, len(close)):
             # 計算最近 n 日的最高價和最低價
-            period_high = np.max(high[i-n+1:i+1])
-            period_low = np.min(low[i-n+1:i+1])
+            period_high: float = np.max(high[i-n+1:i+1])
+            period_low: float = np.min(low[i-n+1:i+1])
             
             # 計算 RSV
             if period_high != period_low:
@@ -227,7 +227,7 @@ class IndicatorCalculator:
         
         # 初始化 K 和 D 值
         # 第一個 K 值通常設為 50，或使用 RSV 值
-        first_valid_idx = n - 1
+        first_valid_idx: int = n - 1
         k_values[first_valid_idx] = rsv[first_valid_idx] if not np.isnan(rsv[first_valid_idx]) else 50
         d_values[first_valid_idx] = k_values[first_valid_idx]
         
@@ -250,54 +250,52 @@ class IndicatorCalculator:
         # )
 
         return {
-            'RSV': pd.Series(rsv, index=index),
-            'K': pd.Series(k_values, index=index),
-            'D': pd.Series(d_values, index=index),
-            'J': pd.Series(j_values, index=index)
-            # 'k_percent': pd.Series(k_percent, index=index), # 使用 TA-Lib 計算 K 值
-            # 'd_percent': pd.Series(d_percent, index=index), # 使用 TA-Lib 計算 D 值
+            'RSV': Series(rsv, index=index),
+            'K': Series(k_values, index=index),
+            'D': Series(d_values, index=index),
+            'J': Series(j_values, index=index)
+            # 'k_percent': Series(k_percent, index=index), # 使用 TA-Lib 計算 K 值
+            # 'd_percent': Series(d_percent, index=index), # 使用 TA-Lib 計算 D 值
         }
     
-    def _calculate_moving_averages(self, close: np.ndarray, index: pd.Index) -> Dict[str, pd.Series]:
+    def _calculate_moving_averages(self, close: np.ndarray, index: Index) -> Dict[str, Series]:
         """計算移動平均線"""
-        indicators = {}
+        indicators: dict[str, Series] = {}
         
         # 簡單移動平均線
         for period in [5, 10, 20, 60]:
-            indicators[f'MA{period}'] = pd.Series(talib.SMA(close, timeperiod=period), index=index)
+            indicators[f'MA{period}'] = Series(talib.SMA(close, timeperiod=period), index=index)
         
         # 指數移動平均線
-        indicators['EMA12'] = pd.Series(talib.EMA(close, timeperiod=12), index=index)
-        indicators['EMA26'] = pd.Series(talib.EMA(close, timeperiod=26), index=index)
+        indicators['EMA12'] = Series(talib.EMA(close, timeperiod=12), index=index)
+        indicators['EMA26'] = Series(talib.EMA(close, timeperiod=26), index=index)
         
         return indicators
     
-    def _calculate_bollinger_bands(self, close: np.ndarray, index: pd.Index) -> Dict[str, pd.Series]:
+    def _calculate_bollinger_bands(self, close: np.ndarray, index: Index) -> Dict[str, Series]:
         """計算布林通道"""
-        bb_upper, bb_middle, bb_lower = talib.BBANDS(close, timeperiod=20, nbdevup=2, nbdevdn=2, matype=0)
+        bb_upper, bb_middle, bb_lower = talib.BBANDS(close, timeperiod=20, nbdevup=2, nbdevdn=2, matype=MA_Type.SMA)
         return {
-            'BB_Upper': pd.Series(bb_upper, index=index),
-            'BB_Middle': pd.Series(bb_middle, index=index),
-            'BB_Lower': pd.Series(bb_lower, index=index),
+            'BB_Upper': Series(bb_upper, index=index),
+            'BB_Middle': Series(bb_middle, index=index),
+            'BB_Lower': Series(bb_lower, index=index),
         }
     
     def _calculate_other_indicators(self, high: np.ndarray, low: np.ndarray, 
                                   close: np.ndarray, volume: np.ndarray, 
-                                  index: pd.Index) -> Dict[str, pd.Series]:
+                                  index: Index) -> Dict[str, Series]:
         """計算其他技術指標"""
         return {
-            'ATR': pd.Series(talib.ATR(high, low, close, timeperiod=14), index=index),
-            'CCI': pd.Series(talib.CCI(high, low, close, timeperiod=14), index=index),
-            'WILLR': pd.Series(talib.WILLR(high, low, close, timeperiod=20), index=index),
-            'MOM': pd.Series(talib.MOM(close, timeperiod=10), index=index),
-            'OBV': pd.Series(talib.OBV(close, volume), index=index),
-            'Volume_MA': pd.Series(talib.SMA(volume, timeperiod=5), index=index),
+            'ATR': Series(talib.ATR(high, low, close, timeperiod=14), index=index),
+            'CCI': Series(talib.CCI(high, low, close, timeperiod=14), index=index),
+            'WILLR': Series(talib.WILLR(high, low, close, timeperiod=20), index=index),
+            'MOM': Series(talib.MOM(close, timeperiod=10), index=index),
         }
 
 class ResultExporter:
     """結果匯出器"""
     
-    def __init__(self, output_dir: str = "output"):
+    def __init__(self, output_dir: str = "output") -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.logger = logging.getLogger(__name__)
@@ -307,11 +305,11 @@ class ResultExporter:
         if filename is None:
             filename = f"analysis.json"
         
-        filepath = self.output_dir / filename
+        filepath: Path = self.output_dir / filename
         
         try:
             # 清理結果，移除無法序列化的物件
-            clean_results = self._clean_results_for_json(results)
+            clean_results: dict[str, Any] = self._clean_results_for_json(results)
             
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(clean_results, f, ensure_ascii=False, indent=2, default=str)
@@ -323,16 +321,16 @@ class ResultExporter:
             self.logger.error(f"保存 JSON 錯誤: {e}")
             return ""
     
-    def save_to_csv(self, symbol: str, data: pd.DataFrame, indicators: Dict[str, pd.Series]) -> str:
+    def save_to_csv(self, symbol: str, data: DataFrame, indicators: Dict[str, Series]) -> str:
         """保存歷史數據為 CSV"""
         try:
             # 合併數據和指標
-            combined_data = data.copy()
+            combined_data: DataFrame = data.copy()
             for name, series in indicators.items():
                 combined_data[name] = series
             
-            filename = f"{symbol}.csv"
-            filepath = self.output_dir / filename
+            filename: str = f"{symbol}.csv"
+            filepath: Path = self.output_dir / filename
             
             combined_data.to_csv(filepath, encoding='utf-8-sig')
             self.logger.info(f"CSV 已保存至: {filepath}")
@@ -344,10 +342,10 @@ class ResultExporter:
     
     def _clean_results_for_json(self, results: Dict[str, Any]) -> Dict[str, Any]:
         """清理結果以便 JSON 序列化"""
-        clean_results = {}
+        clean_results: Dict[str, Dict[str, Any]] = {}
         for symbol, data in results.items():
             if isinstance(data, dict):
-                clean_data = {k: v for k, v in data.items() if not k.startswith('_')}
+                clean_data: Dict[str, Any] = {k: v for k, v in data.items() if not k.startswith('_')}
                 clean_results[symbol] = clean_data
             else:
                 clean_results[symbol] = data
@@ -356,7 +354,7 @@ class ResultExporter:
 class TechnicalAnalyzer:
     """技術分析器主類別"""
     
-    def __init__(self, output_dir: str = "output"):
+    def __init__(self, output_dir: str = "output") -> None:
         self.data_provider = DataProvider()
         self.indicator_calculator = IndicatorCalculator()
         self.exporter = ResultExporter(output_dir)
@@ -368,7 +366,7 @@ class TechnicalAnalyzer:
         """分析單一股票"""
         try:
             # 獲取數據
-            data = self.data_provider.get_stock_data(symbol, period, interval)
+            data: DataFrame | None = self.data_provider.get_stock_data(symbol, period, interval)
             if data is None:
                 return {'error': f'無法獲取 {symbol} 的數據'}
             
@@ -376,17 +374,17 @@ class TechnicalAnalyzer:
                 return {'error': f'{symbol} 數據不足（需要至少60筆數據）'}
             
             # 計算指標
-            indicators = self.indicator_calculator.calculate_all_indicators(data)
+            indicators: dict[str, Series] = self.indicator_calculator.calculate_all_indicators(data)
             if not indicators:
                 return {'error': f'無法計算 {symbol} 的技術指標'}
             
             # 組裝結果
-            latest = data.iloc[-1]
-            interval_str = interval.value if isinstance(interval, TimeInterval) else interval
+            latest: Series = data.iloc[-1]
+            interval_str: str | Any = interval.value if isinstance(interval, TimeInterval) else interval
             
-            result = {
+            result: dict[str, Any] = {
                 'symbol': symbol,
-                'date': data.index[-1].strftime('%Y-%m-%d %H:%M:%S'),
+                'date': pd.to_datetime(data.index[-1]).strftime('%Y-%m-%d %H:%M:%S'),
                 'price': StockPrice(
                     open=float(latest['Open']),
                     high=float(latest['High']),
@@ -398,7 +396,7 @@ class TechnicalAnalyzer:
                 'total_records': len(data),
                 'interval': interval_str,
                 'period': period.value if isinstance(period, Period) else period,
-                'time_range': f"{data.index[0].strftime('%Y-%m-%d')} - {data.index[-1].strftime('%Y-%m-%d')}",
+                'time_range': f"{pd.to_datetime(data.index[0]).strftime('%Y-%m-%d')} - {pd.to_datetime(data.index[-1]).strftime('%Y-%m-%d')}",
                 'analysis_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 '_data': data,
                 '_indicators': indicators
@@ -414,7 +412,7 @@ class TechnicalAnalyzer:
                               period: Union[Period, str] = Period.YEAR_2,
                               interval: Union[TimeInterval, str] = TimeInterval.DAY_1) -> Dict[str, Any]:
         """分析多個股票"""
-        results = {}
+        results: dict[str, dict[str, Any]] = {}
         
         for symbol in symbols:
             self.logger.info(f"正在分析 {symbol}...")
@@ -424,29 +422,29 @@ class TechnicalAnalyzer:
     
     def save_analysis_results(self, results: Dict[str, Any], format_type: str = "json") -> List[str]:
         """保存分析結果"""
-        saved_files = []
+        saved_files: list[str] = []
         
         if format_type.lower() == "json":
-            json_file = self.exporter.save_to_json(results)
+            json_file: str = self.exporter.save_to_json(results)
             if json_file:
                 saved_files.append(json_file)
         
         # 保存 CSV
         for symbol, result in results.items():
             if 'error' not in result and '_data' in result and '_indicators' in result:
-                csv_file = self.exporter.save_to_csv(symbol, result['_data'], result['_indicators'])
+                csv_file: str = self.exporter.save_to_csv(symbol, result['_data'], result['_indicators'])
                 if csv_file:
                     saved_files.append(csv_file)
         
         return saved_files
     
-    def _get_latest_indicator_values(self, indicators: Dict[str, pd.Series]) -> Dict[str, Optional[float]]:
+    def _get_latest_indicator_values(self, indicators: Dict[str, Series]) -> Dict[str, Optional[float]]:
         """獲取指標的最新值"""
-        latest_values = {}
+        latest_values: dict[str, float | None] = {}
         
         for name, series in indicators.items():
-            if isinstance(series, pd.Series) and not series.empty:
-                latest_value = series.iloc[-1]
+            if isinstance(series, Series) and not series.empty:
+                latest_value: Any = series.iloc[-1]
                 latest_values[name] = float(latest_value) if not pd.isna(latest_value) else None
         
         return latest_values
@@ -465,27 +463,30 @@ class AnalysisReporter:
                 continue
             
             print(f"\n📊 {symbol} ({data['date']}):")
-            price = data['price']
+            price: Any = data['price']
             print(f"   價格: 開 {price['open']:.2f} | 高 {price['high']:.2f} | 低 {price['low']:.2f} | 收 {price['close']:.2f}")
             print(f"   成交量: {price['volume']:,}")
             
-            indicators = data['indicators']
+            indicators: Any = data['indicators']
             
             # 顯示關鍵指標
             if indicators.get('RSI(14)'):
-                rsi = indicators['RSI(14)']
-                rsi_status = "超買" if rsi > 70 else "超賣" if rsi < 30 else "正常"
+                rsi: float = indicators['RSI(14)']
+                rsi_status: Literal['超買', '超賣', '正常'] = "超買" if rsi > 70 else "超賣" if rsi < 30 else "正常"
                 print(f"   RSI(14): {rsi:.2f} ({rsi_status})")
             
-            if indicators.get('MACD') and indicators.get('MACD_Signal'):
-                macd_trend = "多頭" if indicators['MACD'] > indicators['MACD_Signal'] else "空頭"
+            if indicators.get('DIF') and indicators.get('MACD'):
+                macd_trend: Literal['多頭', '空頭'] = "多頭" if indicators['DIF'] > indicators['MACD'] else "空頭"
                 print(f"   MACD: {indicators['MACD']:.4f} ({macd_trend})")
             
             if indicators.get('K') and indicators.get('D'):
-                kd_trend = "多頭" if indicators['K'] > indicators['D'] else "空頭"
-                j_value = indicators.get('J', 0)
-                j_signal = "強多" if j_value > 100 else "強空" if j_value < 0 else "正常"
-                print(f"   KDJ: K={indicators['K']:.2f}, D={indicators['D']:.2f}, J={j_value:.2f} ({kd_trend}, J:{j_signal})")
+                kd_trend: Literal['多頭', '空頭'] = "多頭" if indicators['K'] > indicators['D'] else "空頭"
+                j_value: Optional[float] = indicators.get('J')
+                if j_value is not None:
+                    j_signal: Literal['強多', '強空', '正常'] = "強多" if j_value > 100 else "強空" if j_value < 0 else "正常"
+                    print(f"   KDJ: K={indicators['K']:.2f}, D={indicators['D']:.2f}, J={j_value:.2f} ({kd_trend}, J:{j_signal})")
+                else:
+                    print(f"   KDJ: K={indicators['K']:.2f}, D={indicators['D']:.2f}, J=N/A ({kd_trend})")
             
             print(f"   數據筆數: {data['total_records']} | 間隔: {data['interval']}")
 
@@ -493,16 +494,16 @@ def main() -> None:
     """主程序"""
     try:
         # 創建分析器
-        analyzer = TechnicalAnalyzer()
-        reporter = AnalysisReporter()
+        analyzer: TechnicalAnalyzer = TechnicalAnalyzer()
+        reporter: AnalysisReporter = AnalysisReporter()
         
         # 測試股票
-        test_stocks = ['2330', '2317', '2454']  # 台積電、鴻海、聯發科
+        test_stocks: list[str] = ['2330', '2317', '2454']  # 台積電、鴻海、聯發科
         
         print("🚀 開始技術分析")
         
         # 執行分析
-        results = analyzer.analyze_multiple_stocks(
+        results: dict[str, Any] = analyzer.analyze_multiple_stocks(
             symbols=test_stocks,
             period=Period.MAX,
             interval=TimeInterval.DAY_1
@@ -512,7 +513,7 @@ def main() -> None:
         reporter.print_analysis_summary(results)
         
         # 保存結果
-        saved_files = analyzer.save_analysis_results(results, "json")
+        saved_files: list[str] = analyzer.save_analysis_results(results, "json")
         
         print(f"\n💾 已保存 {len(saved_files)} 個檔案:")
         for file in saved_files:
