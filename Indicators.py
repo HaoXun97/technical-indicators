@@ -47,7 +47,6 @@ class StockPrice:
     low: float
     close: float
     volume: int
-    # date: str
 
 @dataclass
 class TechnicalIndicators:
@@ -57,8 +56,10 @@ class TechnicalIndicators:
     macd: Optional[float] = None
     macd_signal: Optional[float] = None
     macd_histogram: Optional[float] = None
+    rsv: Optional[float] = None
     k_percent: Optional[float] = None
     d_percent: Optional[float] = None
+    j_percent: Optional[float] = None
     bb_upper: Optional[float] = None
     bb_middle: Optional[float] = None
     bb_lower: Optional[float] = None
@@ -72,6 +73,7 @@ class TechnicalIndicators:
     cci: Optional[float] = None
     willr: Optional[float] = None
     obv: Optional[float] = None
+    volume_ma: Optional[float] = None
 
 class DataProvider:
     """數據提供者類別"""
@@ -202,15 +204,58 @@ class IndicatorCalculator:
     
     def _calculate_stochastic(self, high: np.ndarray, low: np.ndarray, 
                             close: np.ndarray, index: pd.Index) -> Dict[str, pd.Series]:
-        """計算 KD 指標"""
-        k_percent, d_percent = talib.STOCH(
-            high, low, close, 
-            fastk_period=9, slowk_period=3, slowk_matype=0,
-            slowd_period=3, slowd_matype=0
-        )
+        """計算 KDJ 指標"""
+
+        # 計算 RSV (Raw Stochastic Value)
+        # RSV = (收盤價 - 最近 n 日最低價) / (最近 n 日最高價 - 最近 n 日最低價) * 100
+        n = 9  # KD 指標的週期參數
+        
+        rsv = np.full(len(close), np.nan)
+        k_values = np.full(len(close), np.nan)
+        d_values = np.full(len(close), np.nan)
+        
+        for i in range(n-1, len(close)):
+            # 計算最近 n 日的最高價和最低價
+            period_high = np.max(high[i-n+1:i+1])
+            period_low = np.min(low[i-n+1:i+1])
+            
+            # 計算 RSV
+            if period_high != period_low:
+                rsv[i] = ((close[i] - period_low) / (period_high - period_low)) * 100
+            else:
+                rsv[i] = 50  # 避免除零錯誤
+        
+        # 初始化 K 和 D 值
+        # 第一個 K 值通常設為 50，或使用 RSV 值
+        first_valid_idx = n - 1
+        k_values[first_valid_idx] = rsv[first_valid_idx] if not np.isnan(rsv[first_valid_idx]) else 50
+        d_values[first_valid_idx] = k_values[first_valid_idx]
+        
+        # 計算 K 和 D 值
+        for i in range(first_valid_idx + 1, len(close)):
+            if not np.isnan(rsv[i]):
+                # K = 2/3 × K 前一日 + 1/3 × RSV
+                k_values[i] = (2/3) * k_values[i-1] + (1/3) * rsv[i]
+                # D = 2/3 × D 前一日 + 1/3 × K
+                d_values[i] = (2/3) * d_values[i-1] + (1/3) * k_values[i]
+        
+        # 計算 J 指標：J = 3 * K - 2 * D
+        j_values = 3 * k_values - 2 * d_values
+        
+        # 使用 TA-Lib 計算 KD 指標
+        # k_percent, d_percent = talib.STOCH(
+        #     high, low, close, 
+        #     fastk_period=9, slowk_period=3, slowk_matype=0,
+        #     slowd_period=3, slowd_matype=0
+        # )
+
         return {
-            'K': pd.Series(k_percent, index=index),
-            'D': pd.Series(d_percent, index=index),
+            'RSV': pd.Series(rsv, index=index),
+            'K': pd.Series(k_values, index=index),
+            'D': pd.Series(d_values, index=index),
+            'J': pd.Series(j_values, index=index)
+            # 'k_percent': pd.Series(k_percent, index=index), # 使用 TA-Lib 計算 K 值
+            # 'd_percent': pd.Series(d_percent, index=index), # 使用 TA-Lib 計算 D 值
         }
     
     def _calculate_moving_averages(self, close: np.ndarray, index: pd.Index) -> Dict[str, pd.Series]:
@@ -243,7 +288,7 @@ class IndicatorCalculator:
         return {
             'ATR': pd.Series(talib.ATR(high, low, close, timeperiod=14), index=index),
             'CCI': pd.Series(talib.CCI(high, low, close, timeperiod=14), index=index),
-            'WILLR': pd.Series(talib.WILLR(high, low, close, timeperiod=9), index=index),
+            'WILLR': pd.Series(talib.WILLR(high, low, close, timeperiod=20), index=index),
             'MOM': pd.Series(talib.MOM(close, timeperiod=10), index=index),
             'OBV': pd.Series(talib.OBV(close, volume), index=index),
             'Volume_MA': pd.Series(talib.SMA(volume, timeperiod=5), index=index),
@@ -260,7 +305,7 @@ class ResultExporter:
     def save_to_json(self, results: Dict[str, Any], filename: Optional[str] = None) -> str:
         """保存結果為 JSON"""
         if filename is None:
-            filename = f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            filename = f"analysis.json"
         
         filepath = self.output_dir / filename
         
@@ -286,8 +331,7 @@ class ResultExporter:
             for name, series in indicators.items():
                 combined_data[name] = series
             
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"{symbol}_{timestamp}.csv"
+            filename = f"{symbol}.csv"
             filepath = self.output_dir / filename
             
             combined_data.to_csv(filepath, encoding='utf-8-sig')
@@ -354,7 +398,7 @@ class TechnicalAnalyzer:
                 'total_records': len(data),
                 'interval': interval_str,
                 'period': period.value if isinstance(period, Period) else period,
-                'time_range': f"{data.index[0].strftime('%Y-%m-%d')} to {data.index[-1].strftime('%Y-%m-%d')}",
+                'time_range': f"{data.index[0].strftime('%Y-%m-%d')} - {data.index[-1].strftime('%Y-%m-%d')}",
                 'analysis_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 '_data': data,
                 '_indicators': indicators
@@ -439,7 +483,9 @@ class AnalysisReporter:
             
             if indicators.get('K') and indicators.get('D'):
                 kd_trend = "多頭" if indicators['K'] > indicators['D'] else "空頭"
-                print(f"   KD: K={indicators['K']:.2f}, D={indicators['D']:.2f} ({kd_trend})")
+                j_value = indicators.get('J', 0)
+                j_signal = "強多" if j_value > 100 else "強空" if j_value < 0 else "正常"
+                print(f"   KDJ: K={indicators['K']:.2f}, D={indicators['D']:.2f}, J={j_value:.2f} ({kd_trend}, J:{j_signal})")
             
             print(f"   數據筆數: {data['total_records']} | 間隔: {data['interval']}")
 
