@@ -170,12 +170,17 @@ class DataProvider:
         if symbol.isdigit() and len(symbol) == 4:
             return f"{symbol}.TW"
 
-        # 對於美股，直接使用原始代號（不添加後綴）
-        if symbol in ['AAPL', 'NVDA', 'TSLA', 'MSFT', 'GOOGL', 'AMZN']:
-            return symbol
-
         # 如果已經有後綴，直接返回
         if symbol.endswith((".TW", ".TWO")):
+            return symbol
+
+        # 美股代號特徵：
+        # 1. 包含英文字母
+        # 2. 長度通常在1-5個字符
+        # 3. 可能包含數字但不是純數字
+        if (any(c.isalpha() for c in symbol) and
+            len(symbol) <= 5 and
+                not symbol.isdigit()):
             return symbol
 
         # 默認情況，假設是台股
@@ -698,7 +703,7 @@ def main() -> None:
         reporter: AnalysisReporter = AnalysisReporter()
 
         # 測試股票
-        test_stocks: list[str] = ["2330", "AAPL", "NVDA"]  # 台積電、鴻海、聯發科
+        test_stocks: list[str] = ["2330", "AAPL", "NFLX"]
 
         print("🚀 開始技術分析")
 

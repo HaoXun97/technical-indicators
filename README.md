@@ -135,6 +135,9 @@ pytest --cov=Indicators
 
 # 執行測試並生成詳細報告
 pytest -v --tb=short
+
+# 執行測試並顯示覆蓋率
+pytest test_indicators.py --cov=Indicators --cov-report=html
 ```
 
 ## 📈 支援的時間設定
