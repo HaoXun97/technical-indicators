@@ -143,7 +143,7 @@ class TestIndicatorCalculator:
 
     def test_calculate_rsi(self):
         """測試 RSI 計算"""
-        close = self.test_data["Close"].values
+        close = np.array(self.test_data["Close"].values)
         indicators = self.calculator._calculate_rsi(
             close, self.test_data.index)
 
@@ -157,7 +157,7 @@ class TestIndicatorCalculator:
 
     def test_calculate_macd(self):
         """測試 MACD 計算"""
-        close = self.test_data["Close"].values
+        close = np.array(self.test_data["Close"].values)
         indicators = self.calculator._calculate_macd(
             close, self.test_data.index)
 
@@ -168,9 +168,9 @@ class TestIndicatorCalculator:
 
     def test_calculate_stochastic(self):
         """測試 KDJ 指標計算"""
-        high = self.test_data["High"].values
-        low = self.test_data["Low"].values
-        close = self.test_data["Close"].values
+        high = np.array(self.test_data["High"].values)
+        low = np.array(self.test_data["Low"].values)
+        close = np.array(self.test_data["Close"].values)
 
         indicators = self.calculator._calculate_stochastic(
             high, low, close, self.test_data.index
@@ -187,7 +187,8 @@ class TestIndicatorCalculator:
 
         # RSV 值應該在 0-100 範圍內
         assert all(0 <= val <= 100 for val in rsv_values), \
-            f"RSV 值超出範圍: min={rsv_values.min():.2f}, max={rsv_values.max():.2f}"
+            f"RSV 值超出範圍: min={rsv_values.min():.2f}, " \
+            f"max={rsv_values.max():.2f}"
 
         # 檢查 K 和 D 值的有效性
         k_values = indicators["K"].dropna()
@@ -209,9 +210,9 @@ class TestIndicatorCalculator:
             'Close': [100] * 20,
         }, index=pd.date_range('2023-01-01', periods=20))
 
-        high = same_price_data["High"].values
-        low = same_price_data["Low"].values
-        close = same_price_data["Close"].values
+        high = np.array(same_price_data["High"].values)
+        low = np.array(same_price_data["Low"].values)
+        close = np.array(same_price_data["Close"].values)
 
         indicators = self.calculator._calculate_stochastic(
             high, low, close, same_price_data.index

@@ -216,7 +216,9 @@ class IndicatorCalculator:
 
         return indicators
 
-    def _calculate_rsi(self, close: np.ndarray, index: Index) -> Dict[str, Series]:
+    def _calculate_rsi(
+        self, close: np.ndarray, index: Index
+    ) -> Dict[str, Series]:
         """計算 RSI 指標"""
         return {
             "RSI(5)": Series(talib.RSI(close, timeperiod=5), index=index),
@@ -226,7 +228,9 @@ class IndicatorCalculator:
             "RSI(21)": Series(talib.RSI(close, timeperiod=21), index=index),
         }
 
-    def _calculate_macd(self, close: np.ndarray, index: Index) -> Dict[str, Series]:
+    def _calculate_macd(
+        self, close: np.ndarray, index: Index
+    ) -> Dict[str, Series]:
         """計算 MACD 指標"""
         macd_line, signal_line, macd_histogram = talib.MACD(
             close, fastperiod=12, slowperiod=26, signalperiod=9
@@ -238,7 +242,11 @@ class IndicatorCalculator:
         }
 
     def _calculate_stochastic(
-        self, high: np.ndarray, low: np.ndarray, close: np.ndarray, index: Index
+        self,
+        high: np.ndarray,
+        low: np.ndarray,
+        close: np.ndarray,
+        index: Index
     ) -> Dict[str, Series]:
         """計算 KDJ 指標"""
 
@@ -333,10 +341,18 @@ class IndicatorCalculator:
     ) -> Dict[str, Series]:
         """計算其他技術指標"""
         return {
-            "ATR": Series(talib.ATR(high, low, close, timeperiod=14), index=index),
-            "CCI": Series(talib.CCI(high, low, close, timeperiod=14), index=index),
-            "WILLR": Series(talib.WILLR(high, low, close, timeperiod=20), index=index),
-            "MOM": Series(talib.MOM(close, timeperiod=10), index=index),
+            "ATR": Series(
+                talib.ATR(high, low, close, timeperiod=14), index=index
+            ),
+            "CCI": Series(
+                talib.CCI(high, low, close, timeperiod=14), index=index
+            ),
+            "WILLR": Series(
+                talib.WILLR(high, low, close, timeperiod=20), index=index
+            ),
+            "MOM": Series(
+                talib.MOM(close, timeperiod=10), index=index
+            ),
         }
 
 
@@ -392,7 +408,9 @@ class ResultExporter:
             self.logger.error(f"保存 CSV 錯誤: {e}")
             return ""
 
-    def _clean_results_for_json(self, results: Dict[str, Any]) -> Dict[str, Any]:
+    def _clean_results_for_json(
+        self, results: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """清理結果以便 JSON 序列化"""
         clean_results: Dict[str, Dict[str, Any]] = {}
         for symbol, data in results.items():
@@ -449,7 +467,9 @@ class TechnicalAnalyzer:
 
             result: dict[str, Any] = {
                 "symbol": symbol,
-                "date": pd.to_datetime(data.index[-1]).strftime("%Y-%m-%d %H:%M:%S"),
+                "date": pd.to_datetime(data.index[-1]).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
                 "price": StockPrice(
                     open=float(latest["Open"]),
                     high=float(latest["High"]),
@@ -460,7 +480,9 @@ class TechnicalAnalyzer:
                 "indicators": self._get_latest_indicator_values(indicators),
                 "total_records": len(data),
                 "interval": interval_str,
-                "period": period.value if isinstance(period, Period) else period,
+                "period": (
+                    period.value if isinstance(period, Period) else period
+                ),
                 "time_range": (
                     f"{pd.to_datetime(data.index[0]).strftime('%Y-%m-%d')} - "
                     f"{pd.to_datetime(data.index[-1]).strftime('%Y-%m-%d')}"
@@ -504,7 +526,8 @@ class TechnicalAnalyzer:
 
         # 保存 CSV
         for symbol, result in results.items():
-            if "error" not in result and "_data" in result and "_indicators" in result:
+            if ("error" not in result and "_data" in result and
+                    "_indicators" in result):
                 csv_file: str = self.exporter.save_to_csv(
                     symbol, result["_data"], result["_indicators"]
                 )
@@ -582,34 +605,34 @@ class AnalysisReporter:
                 j_value: Optional[float] = indicators.get("J")
                 if j_value is not None:
                     j_signal: Literal["強多", "強空", "正常"] = (
-                        "強多" if j_value > 100 else "強空" if j_value < 0 else "正常"
+                        "強多" if j_value > 100 else
+                        "強空" if j_value < 0 else "正常"
                     )
                     print(
-                        f"   KDJ: K={
-                            indicators['K']:.2f}, D={
-                            indicators['D']:.2f}, J={
-                            j_value:.2f} ({kd_trend}, J:{j_signal})"
+                        f"   KDJ: K={indicators['K']:.2f}, "
+                        f"D={indicators['D']:.2f}, "
+                        f"J={j_value:.2f} ({kd_trend}, J:{j_signal})"
                     )
                 else:
                     print(
-                        f"   KDJ: K={
-                            indicators['K']:.2f}, D={
-                            indicators['D']:.2f}, J=N/A ({kd_trend})"
+                        f"   KDJ: K={indicators['K']:.2f}, "
+                        f"D={indicators['D']:.2f}, "
+                        f"J=N/A ({kd_trend})"
                     )
 
             if (indicators.get("BB_Upper") and
                 indicators.get("BB_Middle") and
                     indicators.get("BB_Lower")):
                 BB_Trend: Literal["上升", "下降", "平穩"] = (
-                    "上升" if indicators["BB_Upper"] > indicators["BB_Middle"] else
-                    "下降" if indicators["BB_Upper"] < indicators["BB_Middle"] else
-                    "平穩"
+                    "上升" if indicators["BB_Upper"] > indicators["BB_Middle"]
+                    else "下降"
+                    if indicators["BB_Upper"] < indicators["BB_Middle"]
+                    else "平穩"
                 )
                 print(
-                    f"   布林通道: 上軌: {
-                        indicators['BB_Upper']:.2f}, 中軌: {
-                        indicators['BB_Middle']:.2f}, 下軌: {
-                        indicators['BB_Lower']:.2f} | 趨勢: {BB_Trend}"
+                    f"   布林通道: 上軌: {indicators['BB_Upper']:.2f}, "
+                    f"中軌: {indicators['BB_Middle']:.2f}, "
+                    f"下軌: {indicators['BB_Lower']:.2f} | 趨勢: {BB_Trend}"
                 )
             else:
                 print("   布林通道: N/A")
@@ -622,8 +645,10 @@ class AnalysisReporter:
                     "平穩"
                 )
                 print(
-                    f"   MA5: {indicators['MA5']:.2f} | MA10: {indicators['MA10']:.2f} | "
-                    f"MA20: {indicators['MA20']:.2f} | MA60: {indicators['MA60']:.2f} | 趨勢: {ma_trend}"
+                    f"   MA5: {indicators['MA5']:.2f} | "
+                    f"MA10: {indicators['MA10']:.2f} | "
+                    f"MA20: {indicators['MA20']:.2f} | "
+                    f"MA60: {indicators['MA60']:.2f} | 趨勢: {ma_trend}"
                 )
             else:
                 print("   移動平均線: N/A")
@@ -631,7 +656,8 @@ class AnalysisReporter:
             # 修復：檢查 time_range 是否存在，如果不存在則顯示基本信息
             time_range_info = data.get('time_range', 'N/A')
             print(
-                f"   數據筆數: {data['total_records']} ({time_range_info}) | 間隔: {data['interval']}")
+                f"   數據筆數: {data['total_records']} ({time_range_info}) | "
+                f"間隔: {data['interval']}")
 
 
 def main() -> None:
