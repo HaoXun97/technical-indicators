@@ -1,5 +1,7 @@
 # 技術指標分析工具 (Technical Indicators)
 
+[![Python application](https://github.com/HaoXun97/technical-indicators/actions/workflows/python-app.yml/badge.svg)](https://github.com/HaoXun97/technical-indicators/actions/workflows/python-app.yml)
+
 一個專業的股票技術分析工具，使用 Python 實現多種技術指標計算與分析，支援台股數據獲取與自動化分析。
 
 ## 🚀 功能特色
@@ -10,6 +12,12 @@
 - **結果輸出**：支援 JSON 和 CSV 格式輸出
 - **完整測試覆蓋**：包含單元測試和整合測試
 - **CI/CD 整合**：GitHub Actions 自動化測試
+
+## 📱 輸出預覽
+
+### 終端機執行
+
+![終端機示例](./images/terminal_preview_20250529_1757.png)
 
 ## 📋 支援的技術指標
 
@@ -104,7 +112,6 @@ pip install TA-Lib
 ├── test_indicators.py     # 測試檔案
 ├── requirements.txt       # 依賴套件
 ├── pytest.ini           # 測試配置
-├── pyrefly.toml         # 專案配置
 ├── README.md            # 說明文件
 ├── output/              # 輸出目錄
 │   ├── analysis.json    # 分析結果
@@ -155,52 +162,6 @@ pytest -v --tb=short
 - `DAY_1`: 1 天
 - `WEEK_1`: 1 週
 - `MONTH_1`: 1 個月
-
-## 🔧 API 參考
-
-### TechnicalAnalyzer 類別
-
-#### `analyze_stock(symbol, period, interval)`
-
-分析單一股票的技術指標
-
-**參數：**
-
-- `symbol` (str): 股票代號（如 "2330"）
-- `period` (Period): 時間週期
-- `interval` (TimeInterval): 時間間隔
-
-**返回：**
-
-- `Dict[str, Any]`: 包含股價、指標和元數據的字典
-
-#### `analyze_multiple_stocks(symbols, period, interval)`
-
-批量分析多個股票
-
-**參數：**
-
-- `symbols` (List[str]): 股票代號列表
-- `period` (Period): 時間週期
-- `interval` (TimeInterval): 時間間隔
-
-**返回：**
-
-- `Dict[str, Any]`: 所有股票的分析結果
-
-### IndicatorCalculator 類別
-
-#### `calculate_all_indicators(data)`
-
-計算所有支援的技術指標
-
-**參數：**
-
-- `data` (DataFrame): 包含 OHLCV 數據的 DataFrame
-
-**返回：**
-
-- `Dict[str, Series]`: 所有指標的計算結果
 
 ## 🐛 常見問題
 

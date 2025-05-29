@@ -126,9 +126,28 @@ class DataProvider:
             )
 
             ticker: yf.Ticker = yf.Ticker(formatted_symbol)
-            data: DataFrame = ticker.history(
-                period=adjusted_period, interval=interval_str
-            )
+
+            # 添加額外的錯誤處理和重試機制
+            import time
+            max_retries = 3
+            data: DataFrame = DataFrame()  # 初始化 data 變數
+            for attempt in range(max_retries):
+                try:
+                    data = ticker.history(
+                        period=adjusted_period,
+                        interval=interval_str,
+                        timeout=10  # 添加超時設定
+                    )
+                    break
+                except Exception as retry_error:
+                    if attempt < max_retries - 1:
+                        self.logger.warning(
+                            f"嘗試 {attempt + 1} 獲取 {formatted_symbol} "
+                            f"失敗，重試中...")
+                        time.sleep(1)  # 等待1秒後重試
+                        continue
+                    else:
+                        raise retry_error
 
             if data.empty:
                 self.logger.warning(f"無法獲取 {formatted_symbol} 的數據")
@@ -147,9 +166,20 @@ class DataProvider:
 
     def _format_symbol(self, symbol: str) -> str:
         """格式化股票代號"""
-        if not symbol.endswith((".TW", ".TWO")):
+        # 對於台股，添加 .TW 後綴
+        if symbol.isdigit() and len(symbol) == 4:
             return f"{symbol}.TW"
-        return symbol
+
+        # 對於美股，直接使用原始代號（不添加後綴）
+        if symbol in ['AAPL', 'NVDA', 'TSLA', 'MSFT', 'GOOGL', 'AMZN']:
+            return symbol
+
+        # 如果已經有後綴，直接返回
+        if symbol.endswith((".TW", ".TWO")):
+            return symbol
+
+        # 默認情況，假設是台股
+        return f"{symbol}.TW"
 
     def _adjust_period_for_interval(self, period: str, interval: str) -> str:
         """根據間隔調整期間"""
@@ -668,7 +698,7 @@ def main() -> None:
         reporter: AnalysisReporter = AnalysisReporter()
 
         # 測試股票
-        test_stocks: list[str] = ["2330", "2317", "2454"]  # 台積電、鴻海、聯發科
+        test_stocks: list[str] = ["2330", "AAPL", "NVDA"]  # 台積電、鴻海、聯發科
 
         print("🚀 開始技術分析")
 
