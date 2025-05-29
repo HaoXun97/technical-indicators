@@ -257,8 +257,10 @@ class IndicatorCalculator:
 
             # 計算 RSV
             if period_high != period_low:
-                rsv[i] = ((close[i] - period_low) /
-                          (period_high - period_low)) * 100
+                rsv_value = ((close[i] - period_low) /
+                             (period_high - period_low)) * 100
+                # 確保 RSV 值在 0-100 範圍內
+                rsv[i] = max(0, min(100, rsv_value))
             else:
                 rsv[i] = 50  # 避免除零錯誤
 
@@ -281,20 +283,11 @@ class IndicatorCalculator:
         # 計算 J 指標：J = 3 * K - 2 * D
         j_values = 3 * k_values - 2 * d_values
 
-        # 使用 TA-Lib 計算 KD 指標
-        # k_percent, d_percent = talib.STOCH(
-        #     high, low, close,
-        #     fastk_period=9, slowk_period=3, slowk_matype=0,
-        #     slowd_period=3, slowd_matype=0
-        # )
-
         return {
             "RSV": Series(rsv, index=index),
             "K": Series(k_values, index=index),
             "D": Series(d_values, index=index),
             "J": Series(j_values, index=index),
-            # 'k_percent': Series(k_percent, index=index), # 使用 TA-Lib 計算 K 值
-            # 'd_percent': Series(d_percent, index=index), # 使用 TA-Lib 計算 D 值
         }
 
     def _calculate_moving_averages(
@@ -569,12 +562,19 @@ class AnalysisReporter:
                     "超買" if rsi > 70 else "超賣" if rsi < 30 else "正常"
                 )
                 print(f"   RSI(14): {rsi:.2f} ({rsi_status})")
+            else:
+                print("   RSI(14): N/A")
 
             if indicators.get("DIF") and indicators.get("MACD"):
                 macd_trend: Literal["多頭", "空頭"] = (
                     "多頭" if indicators["DIF"] > indicators["MACD"] else "空頭"
                 )
-                print(f"   MACD: {indicators['MACD']:.4f} ({macd_trend})")
+                print(
+                    f"   MACD: {indicators['MACD']:.4f} | "
+                    f"DIF: {indicators['DIF']:.4f} ({macd_trend})"
+                )
+            else:
+                print("   MACD: N/A")
 
             if indicators.get("K") and indicators.get("D"):
                 kd_trend: Literal["多頭", "空頭"] = (
@@ -598,7 +598,41 @@ class AnalysisReporter:
                             indicators['D']:.2f}, J=N/A ({kd_trend})"
                     )
 
-            print(f"   數據筆數: {data['total_records']} | 間隔: {data['interval']}")
+            if (indicators.get("BB_Upper") and
+                indicators.get("BB_Middle") and
+                    indicators.get("BB_Lower")):
+                BB_Trend: Literal["上升", "下降", "平穩"] = (
+                    "上升" if indicators["BB_Upper"] > indicators["BB_Middle"] else
+                    "下降" if indicators["BB_Upper"] < indicators["BB_Middle"] else
+                    "平穩"
+                )
+                print(
+                    f"   布林通道: 上軌: {
+                        indicators['BB_Upper']:.2f}, 中軌: {
+                        indicators['BB_Middle']:.2f}, 下軌: {
+                        indicators['BB_Lower']:.2f} | 趨勢: {BB_Trend}"
+                )
+            else:
+                print("   布林通道: N/A")
+
+            if (indicators.get("MA5") and indicators.get("MA10") and
+                    indicators.get("MA20") and indicators.get("MA60")):
+                ma_trend: Literal["上升", "下降", "平穩"] = (
+                    "上升" if indicators["MA5"] > indicators["MA10"] else
+                    "下降" if indicators["MA5"] < indicators["MA10"] else
+                    "平穩"
+                )
+                print(
+                    f"   MA5: {indicators['MA5']:.2f} | MA10: {indicators['MA10']:.2f} | "
+                    f"MA20: {indicators['MA20']:.2f} | MA60: {indicators['MA60']:.2f} | 趨勢: {ma_trend}"
+                )
+            else:
+                print("   移動平均線: N/A")
+
+            # 修復：檢查 time_range 是否存在，如果不存在則顯示基本信息
+            time_range_info = data.get('time_range', 'N/A')
+            print(
+                f"   數據筆數: {data['total_records']} ({time_range_info}) | 間隔: {data['interval']}")
 
 
 def main() -> None:
