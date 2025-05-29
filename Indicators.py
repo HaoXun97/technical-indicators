@@ -545,11 +545,10 @@ class AnalysisReporter:
             print(f"\n📊 {symbol} ({data['date']}):")
             price: Any = data["price"]
             print(
-                f"   價格: 開 {
-                    price['open']:.2f} | 高 {
-                    price['high']:.2f} | 低 {
-                    price['low']:.2f} | 收 {
-                    price['close']:.2f}"
+                f"   價格: 開 {price['open']:.2f} | "
+                f"高 {price['high']:.2f} | "
+                f"低 {price['low']:.2f} | "
+                f"收 {price['close']:.2f}"
             )
             print(f"   成交量: {price['volume']:,}")
 
