@@ -29,15 +29,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential wget
 
-      - name: Install TA-Lib from source
+      - name: Install TA-Lib
         run: |
-          wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-          tar -xzf ta-lib-0.4.0-src.tar.gz
-          cd ta-lib/
+          wget https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
+          tar -xzf ta-lib-0.6.4-src.tar.gz
+          cd ta-lib-0.6.4/
           ./configure --prefix=/usr
           make
           sudo make install
-          sudo ldconfig
 
       - name: Install dependencies
         run: |
