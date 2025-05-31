@@ -218,7 +218,7 @@ class TestIndicatorCalculator:
 
     def test_calculate_rsi(self):
         """測試 RSI 計算"""
-        close = self.test_data['Close'].values
+        close = self.test_data['Close'].to_numpy()
         result = self.calculator._calculate_rsi(close, self.test_data.index)
 
         assert 'RSI(14)' in result
@@ -230,7 +230,7 @@ class TestIndicatorCalculator:
 
     def test_calculate_macd(self):
         """測試 MACD 計算"""
-        close = self.test_data['Close'].values
+        close = self.test_data['Close'].to_numpy()
         result = self.calculator._calculate_macd(close, self.test_data.index)
 
         assert 'DIF' in result
@@ -242,9 +242,9 @@ class TestIndicatorCalculator:
 
     def test_calculate_stochastic(self):
         """測試 KDJ 計算"""
-        high = self.test_data['High'].values
-        low = self.test_data['Low'].values
-        close = self.test_data['Close'].values
+        high = self.test_data['High'].to_numpy()
+        low = self.test_data['Low'].to_numpy()
+        close = self.test_data['Close'].to_numpy()
 
         result = self.calculator._calculate_stochastic(
             high, low, close, self.test_data.index)
@@ -319,7 +319,8 @@ class TestResultExporter:
         assert os.path.exists(result_path)
 
         # 檢查檔案內容
-        loaded_data = pd.read_csv(result_path, index_col=0)
+        loaded_data = pd.read_csv(
+            result_path, index_col='Date', parse_dates=True)
         assert len(loaded_data) == 2
 
 
