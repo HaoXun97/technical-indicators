@@ -433,6 +433,25 @@ class ResultExporter:
             for name, series in indicators.items():
                 combined_data[name] = series
 
+            # 處理時間索引格式：轉換為台灣時間並移除時區資訊
+            if isinstance(combined_data.index, pd.DatetimeIndex):
+                if combined_data.index.tz is not None:
+                    # 如果有時區資訊，轉換為台灣時間並移除時區
+                    import pytz
+                    taiwan_tz = pytz.timezone('Asia/Taipei')
+
+                    # 先轉換為台灣時間，再移除時區資訊
+                    combined_data.index = (
+                        combined_data.index.tz_convert(taiwan_tz)
+                        .tz_localize(None)
+                    )
+
+                # 將 DatetimeIndex 轉換為字符串格式，並設置索引名稱
+                combined_data.index = pd.Index([
+                    dt.strftime('%Y-%m-%d %H:%M:%S')
+                    for dt in combined_data.index
+                ], name='Date')  # 設置索引名稱為 'Date'
+
             filename: str = f"{symbol}.csv"
             filepath: Path = self.output_dir / filename
 
@@ -709,7 +728,9 @@ def main() -> None:
 
         # 執行分析
         results: dict[str, Any] = analyzer.analyze_multiple_stocks(
-            symbols=test_stocks, period=Period.MAX, interval=TimeInterval.DAY_1
+            symbols=test_stocks,
+            period=Period.MAX,
+            interval=TimeInterval.DAY_1
         )
 
         # 顯示結果
