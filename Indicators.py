@@ -414,8 +414,31 @@ class ResultExporter:
             clean_results: dict[str,
                                 Any] = self._clean_results_for_json(results)
 
+            existing_data: Dict[str, Any] = {}
+            # 檢查檔案是否存在且非空
+            if filepath.exists() and filepath.stat().st_size > 0:
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
+                    if not isinstance(existing_data, dict):  # 確保讀取的是字典
+                        self.logger.warning(
+                            f"現有的 JSON 檔案 {filepath} 格式不正確，將會覆寫。")
+                        existing_data = {}
+                except json.JSONDecodeError:
+                    self.logger.warning(f"無法解析現有的 JSON 檔案 {filepath}。將會覆寫。")
+                    existing_data = {}  # 如果解析失敗，則視為空字典，避免錯誤
+                except Exception as e:
+                    self.logger.error(f"讀取現有 JSON 檔案 {filepath} 錯誤: {e}。將會覆寫。")
+                    existing_data = {}  # 其他錯誤也視為空字典
+
+            # 合併數據：新的結果會覆寫或添加條目
+            # 確保 existing_data 是一個字典以使用 update 方法
+            if not isinstance(existing_data, dict):
+                existing_data = {}
+            existing_data.update(clean_results)
+
             with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(clean_results, f, ensure_ascii=False,
+                json.dump(existing_data, f, ensure_ascii=False,
                           indent=2, default=str)
 
             return str(filepath)
