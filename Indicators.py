@@ -11,6 +11,7 @@ from typing import Dict, Optional, List, Any, Union, Literal
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
+import sys
 
 # 設定警告和日誌
 import warnings
@@ -722,13 +723,21 @@ def main() -> None:
         reporter: AnalysisReporter = AnalysisReporter()
 
         # 測試股票
-        test_stocks: list[str] = ["2330", "AAPL", "NFLX"]
+        default_stocks: list[str] = ["2330", "AAPL", "NFLX"]
+
+        # 從命令行參數獲取股票代號
+        if len(sys.argv) > 1:
+            target_stocks = sys.argv[1:]
+            print(f"ℹ️ 使用命令行傳入的股票代號: {', '.join(target_stocks)}")
+        else:
+            target_stocks = default_stocks
+            print(f"ℹ️ 未提供命令行參數，使用預設股票代號: {', '.join(target_stocks)}")
 
         print("🚀 開始技術分析")
 
         # 執行分析
         results: dict[str, Any] = analyzer.analyze_multiple_stocks(
-            symbols=test_stocks,
+            symbols=target_stocks,  # 使用 target_stocks
             period=Period.MAX,
             interval=TimeInterval.DAY_1
         )
