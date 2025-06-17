@@ -450,40 +450,92 @@ class ResultExporter:
     def save_to_csv(
         self, symbol: str, data: DataFrame, indicators: Dict[str, Series]
     ) -> str:
-        """保存歷史數據為 CSV"""
+        """保存歷史數據為 CSV，如果檔案已存在則更新內容。"""
         try:
-            # 合併數據和指標
-            combined_data: DataFrame = data.copy()
+            # 1. 準備 new_combined_data，並格式化其 'Date' 索引
+            new_combined_data: DataFrame = data.copy()
             for name, series in indicators.items():
-                combined_data[name] = series
+                new_combined_data[name] = series
 
-            # 處理時間索引格式：轉換為台灣時間並移除時區資訊
-            if isinstance(combined_data.index, pd.DatetimeIndex):
-                if combined_data.index.tz is not None:
-                    # 如果有時區資訊，轉換為台灣時間並移除時區
-                    import pytz
+            if isinstance(new_combined_data.index, pd.DatetimeIndex):
+                if new_combined_data.index.tz is not None:
+                    import pytz  # 確保 pytz 已匯入
                     taiwan_tz = pytz.timezone('Asia/Taipei')
-
-                    # 先轉換為台灣時間，再移除時區資訊
-                    combined_data.index = (
-                        combined_data.index.tz_convert(taiwan_tz)
+                    new_combined_data.index = (
+                        new_combined_data.index.tz_convert(taiwan_tz)
                         .tz_localize(None)
                     )
-
-                # 將 DatetimeIndex 轉換為字符串格式，並設置索引名稱
-                combined_data.index = pd.Index([
+                new_combined_data.index = pd.Index([
                     dt.strftime('%Y-%m-%d %H:%M:%S')
-                    for dt in combined_data.index
-                ], name='Date')  # 設置索引名稱為 'Date'
+                    for dt in new_combined_data.index
+                ], name='Date')
+            elif new_combined_data.index.name != 'Date':
+                # 如果索引不是 DatetimeIndex，但名稱不是 'Date'，則設定名稱
+                # 假設此時索引已經是正確的日期字串格式
+                self.logger.debug(
+                    f"CSV Index for {symbol} is not DatetimeIndex and not "
+                    f"named 'Date'. Current name: "
+                    f"{new_combined_data.index.name}. Setting to 'Date'."
+                )
+                new_combined_data.index.name = 'Date'
 
             filename: str = f"{symbol}.csv"
             filepath: Path = self.output_dir / filename
+            final_df: DataFrame
 
-            combined_data.to_csv(filepath, encoding="utf-8-sig")
+            # 2. 如果檔案存在，讀取並合併
+            if filepath.exists() and filepath.stat().st_size > 0:
+                try:
+                    existing_df = pd.read_csv(
+                        filepath, index_col='Date', encoding='utf-8-sig'
+                    )
+                    # 確保 existing_df 的索引是字串類型且名為 'Date'
+                    if isinstance(existing_df.index, pd.DatetimeIndex):
+                        existing_df.index = existing_df.index.strftime(
+                            '%Y-%m-%d %H:%M:%S'
+                        )
+                    else:  # 如果已是 object/string，確保是 str
+                        existing_df.index = existing_df.index.astype(str)
+                    existing_df.index.name = 'Date'
+
+                    # 合併數據：new_combined_data 的數據優先
+                    # concat 後，對於重複的索引（日期），保留最後一個（即來自 new_combined_data）
+                    merged_df = pd.concat([existing_df, new_combined_data])
+                    final_df = merged_df[
+                        ~merged_df.index.duplicated(keep='last')
+                    ]
+                    final_df = final_df.sort_index()
+                    self.logger.info(f"已更新 CSV 檔案: {filepath}")
+
+                except pd.errors.EmptyDataError:
+                    self.logger.warning(
+                        f"現有的 CSV 檔案 {filepath} 為空。將創建新檔案。"
+                    )
+                    final_df = new_combined_data.sort_index()
+                except Exception as e_read:
+                    self.logger.warning(
+                        f"讀取或合併現有 CSV 檔案 {filepath} 錯誤: {e_read}。"
+                        "將覆寫。"
+                    )
+                    final_df = new_combined_data.sort_index()
+            else:
+                # 檔案不存在或為空，直接使用新數據
+                final_df = new_combined_data.sort_index()
+                if filepath.exists():  # 檔案存在但是空的
+                    self.logger.info(
+                        f"現有的 CSV 檔案 {filepath} 為空。將寫入新數據。"
+                    )
+                else:
+                    self.logger.info(
+                        f"CSV 檔案不存在。將創建新檔案: {filepath}"
+                    )
+
+            # 3. 保存最終的 DataFrame (修正上一版本中錯誤的編號)
+            final_df.to_csv(filepath, encoding="utf-8-sig", index=True)
             return str(filepath)
 
         except Exception as e:
-            self.logger.error(f"保存 CSV 錯誤: {e}")
+            self.logger.error(f"保存 CSV 錯誤 ({symbol}): {e}")
             return ""
 
     def _clean_results_for_json(
