@@ -448,7 +448,11 @@ class ResultExporter:
             return ""
 
     def save_to_csv(
-        self, symbol: str, data: DataFrame, indicators: Dict[str, Series]
+        self,
+        symbol: str,
+        data: DataFrame,
+        indicators: Dict[str, Series],
+        interval: str
     ) -> str:
         """保存歷史數據為 CSV，如果檔案已存在則更新內容。"""
         try:
@@ -456,6 +460,13 @@ class ResultExporter:
             new_combined_data: DataFrame = data.copy()
             for name, series in indicators.items():
                 new_combined_data[name] = series
+
+            date_format = '%Y-%m-%d %H:%M:%S'
+            # 檢查 interval 是否為日線級別
+            if (interval.endswith('d') or
+                interval.endswith('wk') or
+                    interval.endswith('mo')):
+                date_format = '%Y-%m-%d'
 
             if isinstance(new_combined_data.index, pd.DatetimeIndex):
                 if new_combined_data.index.tz is not None:
@@ -466,7 +477,7 @@ class ResultExporter:
                         .tz_localize(None)
                     )
                 new_combined_data.index = pd.Index([
-                    dt.strftime('%Y-%m-%d %H:%M:%S')
+                    dt.strftime(date_format)  # 使用條件日期格式
                     for dt in new_combined_data.index
                 ], name='Date')
             elif new_combined_data.index.name != 'Date':
@@ -492,7 +503,7 @@ class ResultExporter:
                     # 確保 existing_df 的索引是字串類型且名為 'Date'
                     if isinstance(existing_df.index, pd.DatetimeIndex):
                         existing_df.index = existing_df.index.strftime(
-                            '%Y-%m-%d %H:%M:%S'
+                            date_format  # 使用條件日期格式
                         )
                     else:  # 如果已是 object/string，確保是 str
                         existing_df.index = existing_df.index.astype(str)
@@ -595,10 +606,18 @@ class TechnicalAnalyzer:
                     interval, TimeInterval) else interval
             )
 
+            # 根據 interval 決定日期格式
+            if (interval_str.endswith('d') or
+                interval_str.endswith('wk') or
+                    interval_str.endswith('mo')):
+                date_format_str = '%Y-%m-%d'
+            else:
+                date_format_str = '%Y-%m-%d %H:%M:%S'
+
             result: dict[str, Any] = {
                 "symbol": symbol,
                 "date": pd.to_datetime(data.index[-1]).strftime(
-                    "%Y-%m-%d %H:%M:%S"
+                    date_format_str  # 使用條件日期格式
                 ),
                 "price": StockPrice(
                     open=float(latest["Open"]),
@@ -657,9 +676,14 @@ class TechnicalAnalyzer:
         # 保存 CSV
         for symbol, result in results.items():
             if ("error" not in result and "_data" in result and
-                    "_indicators" in result):
+                    "_indicators" in result and "interval" in result):
+                # 確保 interval 存在
                 csv_file: str = self.exporter.save_to_csv(
-                    symbol, result["_data"], result["_indicators"]
+                    # 傳遞 interval
+                    symbol,
+                    result["_data"],
+                    result["_indicators"],
+                    result["interval"]
                 )
                 if csv_file:
                     saved_files.append(csv_file)
