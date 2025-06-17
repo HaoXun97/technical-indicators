@@ -73,6 +73,18 @@ sudo apt-get install libta-lib-dev  # Ubuntu
 pip install TA-Lib
 ```
 
+## 💻 用法
+
+### 命令列介面 (CLI)
+
+直接從終端機執行 `Indicators.py`
+
+```bash
+python Indicators.py 2330 AAPL NFLX
+```
+
+這將會分析指定的股票代號 (2330, AAPL 和 NFLX)，並將結果儲存到 `output` 目錄中。
+
 ## 📊 輸出格式
 
 ### JSON 格式
@@ -95,6 +107,7 @@ pip install TA-Lib
       "K": 30.99,
       "D": 41.43,
       "MA20": 966.0
+      其他指標...
     }
   }
 }
@@ -109,7 +122,7 @@ pip install TA-Lib
 ```
 技術指標 Technical-indicators/
 ├── Indicators.py          # 主要程式檔案
-├── test_indicators.py     # 測試檔案
+├── test_indicators.py     # Python 測試檔案
 ├── requirements.txt       # 依賴套件
 ├── pytest.ini             # 測試配置
 ├── README.md              # 說明文件
