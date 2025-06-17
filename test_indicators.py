@@ -16,7 +16,8 @@ from Indicators import (
     StockPrice,
     TechnicalIndicators,
     Period,
-    TimeInterval
+    TimeInterval,
+    main  # 新增匯入 main 函數
 )
 
 
@@ -529,6 +530,116 @@ class TestIntegration:
         assert "RSI(14)" in indicators
         assert "DIF" in indicators
         assert "K" in indicators
+
+
+# 新增 TestMainFunction 類別
+class TestMainFunction:
+    """測試 main 函數的命令列參數處理"""
+
+    @patch('Indicators.AnalysisReporter')  # 修正 patch 的目標
+    @patch('Indicators.TechnicalAnalyzer')  # 修正 patch 的目標
+    @patch('sys.argv')
+    def test_main_no_args(self, mock_argv, MockTechnicalAnalyzer,
+                          MockAnalysisReporter):
+        """測試 main 函數在沒有命令列參數時的行為"""
+        # 設定 mock
+        mock_analyzer_instance = MockTechnicalAnalyzer.return_value
+        mock_reporter_instance = MockAnalysisReporter.return_value
+
+        # 模擬 sys.argv 為 ['Indicators.py'] (即沒有額外參數)
+        mock_argv_list = ['Indicators.py']
+        mock_argv.__getitem__ = lambda s, i: mock_argv_list[i]
+        mock_argv.__len__ = lambda s: len(mock_argv_list)
+
+        # 呼叫 main 函數
+        main()
+
+        # 斷言
+        default_stocks = ["2330", "AAPL", "NFLX"]
+        mock_analyzer_instance.analyze_multiple_stocks.assert_called_once_with(
+            symbols=default_stocks,
+            period=Period.MAX,
+            interval=TimeInterval.DAY_1
+        )
+
+        mock_results = \
+            mock_analyzer_instance.analyze_multiple_stocks.return_value
+        mock_reporter_instance.print_analysis_summary.assert_called_once_with(
+            mock_results
+        )
+        mock_analyzer_instance.save_analysis_results.assert_called_once_with(
+            mock_results, "json"
+        )
+
+    @patch('Indicators.AnalysisReporter')  # 修正 patch 的目標
+    @patch('Indicators.TechnicalAnalyzer')  # 修正 patch 的目標
+    @patch('sys.argv')
+    def test_main_with_one_arg(self, mock_argv, MockTechnicalAnalyzer,
+                               MockAnalysisReporter):
+        """測試 main 函數在有一個命令列參數時的行為"""
+        # 設定 mock
+        mock_analyzer_instance = MockTechnicalAnalyzer.return_value
+        mock_reporter_instance = MockAnalysisReporter.return_value
+        test_stock = "TSLA"
+
+        # 模擬 sys.argv 為 ['Indicators.py', 'TSLA']
+        mock_argv_list = ['Indicators.py', test_stock]
+        mock_argv.__getitem__ = lambda s, i: mock_argv_list[i]
+        mock_argv.__len__ = lambda s: len(mock_argv_list)
+
+        # 呼叫 main 函數
+        main()
+
+        # 斷言
+        mock_analyzer_instance.analyze_multiple_stocks.assert_called_once_with(
+            symbols=[test_stock],
+            period=Period.MAX,
+            interval=TimeInterval.DAY_1
+        )
+
+        mock_results = \
+            mock_analyzer_instance.analyze_multiple_stocks.return_value
+        mock_reporter_instance.print_analysis_summary.assert_called_once_with(
+            mock_results
+        )
+        mock_analyzer_instance.save_analysis_results.assert_called_once_with(
+            mock_results, "json"
+        )
+
+    @patch('Indicators.AnalysisReporter')  # 修正 patch 的目標
+    @patch('Indicators.TechnicalAnalyzer')  # 修正 patch 的目標
+    @patch('sys.argv')
+    def test_main_with_multiple_args(self, mock_argv, MockTechnicalAnalyzer,
+                                     MockAnalysisReporter):
+        """測試 main 函數在有多個命令列參數時的行為"""
+        # 設定 mock
+        mock_analyzer_instance = MockTechnicalAnalyzer.return_value
+        mock_reporter_instance = MockAnalysisReporter.return_value
+        test_stocks = ["GOOG", "AMZN"]
+
+        # 模擬 sys.argv 為 ['Indicators.py', 'GOOG', 'AMZN']
+        mock_argv_list = ['Indicators.py'] + test_stocks
+        mock_argv.__getitem__ = lambda s, i: mock_argv_list[i]
+        mock_argv.__len__ = lambda s: len(mock_argv_list)
+
+        # 呼叫 main 函數
+        main()
+
+        # 斷言
+        mock_analyzer_instance.analyze_multiple_stocks.assert_called_once_with(
+            symbols=test_stocks,
+            period=Period.MAX,
+            interval=TimeInterval.DAY_1
+        )
+
+        mock_results = \
+            mock_analyzer_instance.analyze_multiple_stocks.return_value
+        mock_reporter_instance.print_analysis_summary.assert_called_once_with(
+            mock_results
+        )
+        mock_analyzer_instance.save_analysis_results.assert_called_once_with(
+            mock_results, "json"
+        )
 
 
 if __name__ == "__main__":

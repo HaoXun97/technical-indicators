@@ -11,6 +11,7 @@ from typing import Dict, Optional, List, Any, Union, Literal
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
+import sys
 
 # 設定警告和日誌
 import warnings
@@ -413,8 +414,31 @@ class ResultExporter:
             clean_results: dict[str,
                                 Any] = self._clean_results_for_json(results)
 
+            existing_data: Dict[str, Any] = {}
+            # 檢查檔案是否存在且非空
+            if filepath.exists() and filepath.stat().st_size > 0:
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
+                    if not isinstance(existing_data, dict):  # 確保讀取的是字典
+                        self.logger.warning(
+                            f"現有的 JSON 檔案 {filepath} 格式不正確，將會覆寫。")
+                        existing_data = {}
+                except json.JSONDecodeError:
+                    self.logger.warning(f"無法解析現有的 JSON 檔案 {filepath}。將會覆寫。")
+                    existing_data = {}  # 如果解析失敗，則視為空字典，避免錯誤
+                except Exception as e:
+                    self.logger.error(f"讀取現有 JSON 檔案 {filepath} 錯誤: {e}。將會覆寫。")
+                    existing_data = {}  # 其他錯誤也視為空字典
+
+            # 合併數據：新的結果會覆寫或添加條目
+            # 確保 existing_data 是一個字典以使用 update 方法
+            if not isinstance(existing_data, dict):
+                existing_data = {}
+            existing_data.update(clean_results)
+
             with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(clean_results, f, ensure_ascii=False,
+                json.dump(existing_data, f, ensure_ascii=False,
                           indent=2, default=str)
 
             return str(filepath)
@@ -722,13 +746,21 @@ def main() -> None:
         reporter: AnalysisReporter = AnalysisReporter()
 
         # 測試股票
-        test_stocks: list[str] = ["2330", "AAPL", "NFLX"]
+        default_stocks: list[str] = ["2330", "AAPL", "NFLX"]
+
+        # 從命令行參數獲取股票代號
+        if len(sys.argv) > 1:
+            target_stocks = sys.argv[1:]
+            print(f"ℹ️ 使用命令行傳入的股票代號: {', '.join(target_stocks)}")
+        else:
+            target_stocks = default_stocks
+            print(f"ℹ️ 未提供命令行參數，使用預設股票代號: {', '.join(target_stocks)}")
 
         print("🚀 開始技術分析")
 
         # 執行分析
         results: dict[str, Any] = analyzer.analyze_multiple_stocks(
-            symbols=test_stocks,
+            symbols=target_stocks,  # 使用 target_stocks
             period=Period.MAX,
             interval=TimeInterval.DAY_1
         )

@@ -17,7 +17,7 @@
 
 ### 終端機執行
 
-![終端機示例](./images/terminal_preview_20250529_1757.png)
+![終端機示例](./images/terminal_preview_20250617_1600.png)
 
 ## 📋 支援的技術指標
 
@@ -111,14 +111,15 @@ pip install TA-Lib
 ├── Indicators.py          # 主要程式檔案
 ├── test_indicators.py     # 測試檔案
 ├── requirements.txt       # 依賴套件
-├── pytest.ini           # 測試配置
-├── README.md            # 說明文件
-├── output/              # 輸出目錄
-│   ├── analysis.json    # 分析結果
-│   └── *.csv           # 歷史數據
-└── .github/
+├── pytest.ini             # 測試配置
+├── README.md              # 說明文件
+├── images/                # 預覽圖片等資源
+├── output/                # 輸出目錄
+│   ├── analysis.json      # 分析結果
+│   └── *.csv              # 歷史數據
+└── .github/               # GitHub Actions 等設定
     └── workflows/
-        └── python-app.yml  # GitHub Actions 配置
+        └── python-app.yml   # GitHub Actions 配置
 ```
 
 ## 🧪 測試
