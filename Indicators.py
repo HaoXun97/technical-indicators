@@ -126,43 +126,100 @@ class DataProvider:
                 period_str, interval_str
             )
 
-            ticker: yf.Ticker = yf.Ticker(formatted_symbol)
+            # 嘗試獲取數據，如果是台股且失敗，則嘗試上櫃市場
+            data: DataFrame = DataFrame()
+            symbols_to_try = [formatted_symbol]
 
-            # 添加額外的錯誤處理和重試機制
-            import time
-            max_retries = 3
-            data: DataFrame = DataFrame()  # 初始化 data 變數
-            for attempt in range(max_retries):
+            # 如果是台股 .TW 後綴，也嘗試 .TWO 後綴
+            if (formatted_symbol.endswith('.TW') and
+                    symbol.isdigit() and len(symbol) == 4):
+                symbols_to_try.append(f"{symbol}.TWO")
+
+            success_symbol = None
+
+            for attempt_symbol in symbols_to_try:
+
+                # 完全禁用所有相關的日誌輸出
+                import io
+                from contextlib import redirect_stderr, redirect_stdout
+
+                # 保存原始日誌級別
+                loggers_to_silence = [
+                    'yfinance',
+                    'urllib3',
+                    'requests',
+                    'urllib3.connectionpool',
+                    'requests.packages.urllib3.connectionpool'
+                ]
+                original_levels = {}
+                for logger_name in loggers_to_silence:
+                    logger = logging.getLogger(logger_name)
+                    original_levels[logger_name] = logger.level
+                    logger.setLevel(logging.CRITICAL)
+
+                # 創建空的輸出流來捕獲所有輸出
+                devnull = io.StringIO()
+
                 try:
-                    data = ticker.history(
-                        period=adjusted_period,
-                        interval=interval_str,
-                        timeout=10  # 添加超時設定
-                    )
+                    with redirect_stderr(devnull), redirect_stdout(devnull):
+                        ticker: yf.Ticker = yf.Ticker(attempt_symbol)
+
+                        # 添加額外的錯誤處理和重試機制
+                        import time
+                        max_retries = 2
+                        for attempt in range(max_retries):
+                            try:
+                                data = ticker.history(
+                                    period=adjusted_period,
+                                    interval=interval_str,
+                                    auto_adjust=False,
+                                    actions=False,
+                                    timeout=10
+                                )
+
+                                # 如果成功獲取數據，跳出重試循環
+                                if not data.empty:
+                                    success_symbol = attempt_symbol
+                                    break
+
+                            except Exception:
+                                if attempt < max_retries - 1:
+                                    time.sleep(0.5)
+                                    continue
+                                else:
+                                    # 只在調試模式下記錄
+                                    pass
+
+                finally:
+                    # 恢復原始日誌級別
+                    for logger_name, level in original_levels.items():
+                        logging.getLogger(logger_name).setLevel(level)
+
+                # 如果成功獲取數據，跳出循環
+                if not data.empty:
                     break
-                except Exception as retry_error:
-                    if attempt < max_retries - 1:
-                        self.logger.warning(
-                            f"嘗試 {attempt + 1} 獲取 {formatted_symbol} "
-                            f"失敗，重試中...")
-                        time.sleep(1)  # 等待1秒後重試
-                        continue
-                    else:
-                        raise retry_error
 
             if data.empty:
-                self.logger.warning(f"無法獲取 {formatted_symbol} 的數據")
+                self.logger.error(
+                    f"❌ 無法獲取 {symbol} 的數據（已嘗試所有可能的市場："
+                    f"{', '.join(symbols_to_try)}）")
                 return None
 
-            self.logger.info(f"成功獲取 {formatted_symbol} 數據: {len(data)} 筆")
+            # 移除 Adj Close 欄位（如果存在）
+            if 'Adj Close' in data.columns:
+                data = data.drop(columns=['Adj Close'])
+
+            self.logger.info(f"✅ 成功從 {success_symbol} 獲取 {len(data)} 筆數據")
 
             if use_cache:
+                # 使用成功的symbol作為cache key
+                cache_key = f"{success_symbol}_{period_str}_{interval_str}"
                 self._cache[cache_key] = data
 
             return data
 
         except Exception as e:
-            self.logger.error(f"獲取 {symbol} 數據錯誤: {e}")
+            self.logger.error(f"❌ 獲取 {symbol} 數據錯誤: {e}")
             return None
 
     def _format_symbol(self, symbol: str) -> str:
@@ -392,6 +449,61 @@ class IndicatorCalculator:
         }
 
 
+class DecimalPrecisionHelper:
+    """小數位數處理工具類"""
+
+    @staticmethod
+    def get_indicator_decimal_places(indicator_name: str) -> int:
+        """根據指標類型返回建議的小數位數"""
+
+        # 價格相關指標 - 保持原始格式（不強制小數位）
+        price_indicators = [
+            'MA', 'EMA', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'ATR'
+        ]
+
+        # 震盪指標 - 2位
+        oscillators = [
+            'RSI', 'K', 'D', 'J', 'CCI', 'WILLR', 'MOM', 'RSV'
+        ]
+
+        # MACD系列 - 4位（數值較小需要更高精度）
+        macd_indicators = ['DIF', 'MACD', 'MACD_Histogram']
+
+        if any(ind in indicator_name for ind in price_indicators):
+            return 2  # 價格相關指標保持2位
+        elif any(ind in indicator_name for ind in oscillators):
+            return 2  # 震盪指標2位
+        elif any(ind in indicator_name for ind in macd_indicators):
+            return 4  # MACD系列4位
+        else:
+            return 2  # 預設值
+
+    @staticmethod
+    def round_value_by_type(value: Any, name: str = "") -> Any:
+        """根據類型和名稱智能四捨五入數值"""
+        if pd.isna(value) or value is None:
+            return None
+
+        if isinstance(value, (int, float)):
+            if name:
+                decimal_places = (
+                    DecimalPrecisionHelper.get_indicator_decimal_places(name)
+                )
+                return round(float(value), decimal_places)
+            else:
+                return round(float(value), 2)  # 預設2位
+
+        return value
+
+    @staticmethod
+    def round_series_by_name(series: Series, name: str) -> Series:
+        """根據指標名稱四捨五入Series"""
+        decimal_places = (
+            DecimalPrecisionHelper.get_indicator_decimal_places(name)
+        )
+        return series.round(decimal_places)
+
+
 class ResultExporter:
     """結果匯出器"""
 
@@ -403,7 +515,7 @@ class ResultExporter:
     def save_to_json(
         self, results: Dict[str, Any], filename: Optional[str] = None
     ) -> str:
-        """保存結果為 JSON"""
+        """保存結果為 JSON，使用智能小數位數處理"""
         if filename is None:
             filename = "analysis.json"
 
@@ -411,8 +523,37 @@ class ResultExporter:
 
         try:
             # 清理結果，移除無法序列化的物件
-            clean_results: dict[str,
-                                Any] = self._clean_results_for_json(results)
+            clean_results: Dict[str, Any] = self._clean_results_for_json(
+                results
+            )
+
+            # 使用智能小數位數處理
+            def round_values_intelligently(
+                data: Any, parent_key: str = ""
+            ) -> Any:
+                if isinstance(data, dict):
+                    return {
+                        k: round_values_intelligently(v, k)
+                        for k, v in data.items()
+                    }
+                elif isinstance(data, list):
+                    return [
+                        round_values_intelligently(v, parent_key)
+                        for v in data
+                    ]
+                elif isinstance(data, (int, float)) and not pd.isna(data):
+                    # 對特定欄位進行特殊處理
+                    if parent_key in ['open', 'high', 'low', 'close']:
+                        return round(float(data), 2)  # 價格數據2位小數
+                    elif parent_key in ['total_records', 'volume']:
+                        return int(data)  # 記錄數和成交量保持整數
+                    else:
+                        return DecimalPrecisionHelper.round_value_by_type(
+                            data, parent_key
+                        )
+                return data
+
+            clean_results = round_values_intelligently(clean_results)
 
             existing_data: Dict[str, Any] = {}
             # 檢查檔案是否存在且非空
@@ -420,26 +561,26 @@ class ResultExporter:
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:
                         existing_data = json.load(f)
-                    if not isinstance(existing_data, dict):  # 確保讀取的是字典
+                    if not isinstance(existing_data, dict):
                         self.logger.warning(
                             f"現有的 JSON 檔案 {filepath} 格式不正確，將會覆寫。")
                         existing_data = {}
                 except json.JSONDecodeError:
                     self.logger.warning(f"無法解析現有的 JSON 檔案 {filepath}。將會覆寫。")
-                    existing_data = {}  # 如果解析失敗，則視為空字典，避免錯誤
+                    existing_data = {}
                 except Exception as e:
                     self.logger.error(f"讀取現有 JSON 檔案 {filepath} 錯誤: {e}。將會覆寫。")
-                    existing_data = {}  # 其他錯誤也視為空字典
+                    existing_data = {}
 
             # 合併數據：新的結果會覆寫或添加條目
-            # 確保 existing_data 是一個字典以使用 update 方法
             if not isinstance(existing_data, dict):
                 existing_data = {}
             existing_data.update(clean_results)
 
             with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(existing_data, f, ensure_ascii=False,
-                          indent=2, default=str)
+                json.dump(
+                    existing_data, f, ensure_ascii=False, indent=2,
+                    default=str)
 
             return str(filepath)
 
@@ -448,54 +589,124 @@ class ResultExporter:
             return ""
 
     def save_to_csv(
-        self, symbol: str, data: DataFrame, indicators: Dict[str, Series]
+        self,
+        symbol: str,
+        data: DataFrame,
+        indicators: Dict[str, Series],
+        interval: str
     ) -> str:
-        """保存歷史數據為 CSV"""
+        """保存歷史數據為 CSV，使用智能小數位數處理"""
         try:
-            # 合併數據和指標
-            combined_data: DataFrame = data.copy()
-            for name, series in indicators.items():
-                combined_data[name] = series
+            new_combined_data: DataFrame = data.copy()
 
-            # 處理時間索引格式：轉換為台灣時間並移除時區資訊
-            if isinstance(combined_data.index, pd.DatetimeIndex):
-                if combined_data.index.tz is not None:
-                    # 如果有時區資訊，轉換為台灣時間並移除時區
+            # 對價格數據進行四捨五入到2位小數
+            price_columns = ['Open', 'High', 'Low', 'Close']
+            for col in price_columns:
+                if col in new_combined_data.columns:
+                    new_combined_data[col] = new_combined_data[col].round(2)
+
+            # 對指標數據使用智能小數位數處理
+            for name, series in indicators.items():
+                new_combined_data[name] = (
+                    DecimalPrecisionHelper.round_series_by_name(series, name)
+                )
+
+            date_format = '%Y-%m-%d %H:%M:%S'
+            if (interval.endswith('d') or
+                interval.endswith('wk') or
+                    interval.endswith('mo')):
+                date_format = '%Y-%m-%d'
+
+            if isinstance(new_combined_data.index, pd.DatetimeIndex):
+                if new_combined_data.index.tz is not None:
                     import pytz
                     taiwan_tz = pytz.timezone('Asia/Taipei')
-
-                    # 先轉換為台灣時間，再移除時區資訊
-                    combined_data.index = (
-                        combined_data.index.tz_convert(taiwan_tz)
+                    new_combined_data.index = (
+                        new_combined_data.index.tz_convert(taiwan_tz)
                         .tz_localize(None)
                     )
-
-                # 將 DatetimeIndex 轉換為字符串格式，並設置索引名稱
-                combined_data.index = pd.Index([
-                    dt.strftime('%Y-%m-%d %H:%M:%S')
-                    for dt in combined_data.index
-                ], name='Date')  # 設置索引名稱為 'Date'
+                new_combined_data.index = pd.Index([
+                    dt.strftime(date_format)
+                    for dt in new_combined_data.index
+                ], name='Date')
+            elif new_combined_data.index.name != 'Date':
+                new_combined_data.index.name = 'Date'
 
             filename: str = f"{symbol}.csv"
             filepath: Path = self.output_dir / filename
+            final_df: DataFrame
 
-            combined_data.to_csv(filepath, encoding="utf-8-sig")
+            if filepath.exists() and filepath.stat().st_size > 0:
+                try:
+                    existing_df = pd.read_csv(
+                        filepath, index_col='Date', encoding='utf-8-sig'
+                    )
+                    if isinstance(existing_df.index, pd.DatetimeIndex):
+                        existing_df.index = existing_df.index.strftime(
+                            date_format
+                        )
+                    else:
+                        existing_df.index = existing_df.index.astype(str)
+                    existing_df.index.name = 'Date'
+
+                    merged_df = pd.concat([existing_df, new_combined_data])
+                    final_df = merged_df[
+                        ~merged_df.index.duplicated(keep='last')
+                    ]
+                    final_df = final_df.sort_index()
+                    self.logger.info(f"已更新 CSV 檔案: {filepath}")
+
+                except pd.errors.EmptyDataError:
+                    self.logger.warning(
+                        f"現有的 CSV 檔案 {filepath} 為空。將創建新檔案。"
+                    )
+                    final_df = new_combined_data.sort_index()
+                except Exception as e_read:
+                    self.logger.warning(
+                        f"讀取或合併現有 CSV 檔案 {filepath} 錯誤: {e_read}。"
+                        "將覆寫。"
+                    )
+                    final_df = new_combined_data.sort_index()
+            else:
+                final_df = new_combined_data.sort_index()
+                if filepath.exists():
+                    self.logger.info(
+                        f"現有的 CSV 檔案 {filepath} 為空。將寫入新數據。"
+                    )
+                else:
+                    self.logger.info(
+                        f"CSV 檔案不存在。將創建新檔案: {filepath}"
+                    )
+
+            final_df.to_csv(filepath, encoding="utf-8-sig", index=True)
             return str(filepath)
 
         except Exception as e:
-            self.logger.error(f"保存 CSV 錯誤: {e}")
+            self.logger.error(f"保存 CSV 錯誤 ({symbol}): {e}")
             return ""
 
     def _clean_results_for_json(
         self, results: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """清理結果以便 JSON 序列化"""
+        """清理結果以便 JSON 序列化，使用智能小數位數處理"""
         clean_results: Dict[str, Dict[str, Any]] = {}
         for symbol, data in results.items():
             if isinstance(data, dict):
-                clean_data: Dict[str, Any] = {
-                    k: v for k, v in data.items() if not k.startswith("_")
-                }
+                clean_data: Dict[str, Any] = {}
+                for k, v in data.items():
+                    if not k.startswith("_"):
+                        if k == "indicators" and isinstance(v, dict):
+                            # 對指標數據使用智能小數位數處理
+                            clean_data[k] = {
+                                ind_name: (
+                                    DecimalPrecisionHelper.round_value_by_type(
+                                        ind_value, ind_name
+                                    )
+                                )
+                                for ind_name, ind_value in v.items()
+                            }
+                        else:
+                            clean_data[k] = v
                 clean_results[symbol] = clean_data
             else:
                 clean_results[symbol] = data
@@ -543,16 +754,24 @@ class TechnicalAnalyzer:
                     interval, TimeInterval) else interval
             )
 
+            # 根據 interval 決定日期格式
+            if (interval_str.endswith('d') or
+                interval_str.endswith('wk') or
+                    interval_str.endswith('mo')):
+                date_format_str = '%Y-%m-%d'
+            else:
+                date_format_str = '%Y-%m-%d %H:%M:%S'
+
             result: dict[str, Any] = {
                 "symbol": symbol,
                 "date": pd.to_datetime(data.index[-1]).strftime(
-                    "%Y-%m-%d %H:%M:%S"
+                    date_format_str  # 使用條件日期格式
                 ),
                 "price": StockPrice(
-                    open=float(latest["Open"]),
-                    high=float(latest["High"]),
-                    low=float(latest["Low"]),
-                    close=float(latest["Close"]),
+                    open=round(float(latest["Open"]), 2),    # 四捨五入到2位小數
+                    high=round(float(latest["High"]), 2),    # 四捨五入到2位小數
+                    low=round(float(latest["Low"]), 2),      # 四捨五入到2位小數
+                    close=round(float(latest["Close"]), 2),  # 四捨五入到2位小數
                     volume=int(latest["Volume"]),
                 ).__dict__,
                 "indicators": self._get_latest_indicator_values(indicators),
@@ -605,9 +824,14 @@ class TechnicalAnalyzer:
         # 保存 CSV
         for symbol, result in results.items():
             if ("error" not in result and "_data" in result and
-                    "_indicators" in result):
+                    "_indicators" in result and "interval" in result):
+                # 確保 interval 存在
                 csv_file: str = self.exporter.save_to_csv(
-                    symbol, result["_data"], result["_indicators"]
+                    # 傳遞 interval
+                    symbol,
+                    result["_data"],
+                    result["_indicators"],
+                    result["interval"]
                 )
                 if csv_file:
                     saved_files.append(csv_file)
@@ -617,15 +841,22 @@ class TechnicalAnalyzer:
     def _get_latest_indicator_values(
         self, indicators: Dict[str, Series]
     ) -> Dict[str, Optional[float]]:
-        """獲取指標的最新值"""
+        """獲取指標的最新值，使用智能小數位數處理"""
         latest_values: dict[str, float | None] = {}
 
         for name, series in indicators.items():
             if isinstance(series, Series) and not series.empty:
                 latest_value: Any = series.iloc[-1]
-                latest_values[name] = (
-                    float(latest_value) if not pd.isna(latest_value) else None
-                )
+                if not pd.isna(latest_value):
+                    # 使用智能小數位數處理
+                    processed_value = (
+                        DecimalPrecisionHelper.round_value_by_type(
+                            latest_value, name
+                        )
+                    )
+                    latest_values[name] = processed_value
+                else:
+                    latest_values[name] = None
 
         return latest_values
 

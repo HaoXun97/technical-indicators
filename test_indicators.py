@@ -315,7 +315,7 @@ class TestResultExporter:
             'MA5': pd.Series([102, 103], index=data.index)
         }
 
-        result_path = self.exporter.save_to_csv("AAPL", data, indicators)
+        result_path = self.exporter.save_to_csv("AAPL", data, indicators, "1d")
 
         assert os.path.exists(result_path)
 
@@ -639,6 +639,56 @@ class TestMainFunction:
         )
         mock_analyzer_instance.save_analysis_results.assert_called_once_with(
             mock_results, "json"
+        )
+
+    @patch('Indicators.AnalysisReporter')
+    @patch('Indicators.TechnicalAnalyzer')
+    @patch('sys.argv')
+    def test_main_date_format(self, mock_argv, MockTechnicalAnalyzer,
+                              MockAnalysisReporter):
+        """測試 main 函數的日期格式化行為"""
+        # 設定 mock
+        mock_analyzer_instance = MockTechnicalAnalyzer.return_value
+        mock_reporter_instance = MockAnalysisReporter.return_value
+
+        # 模擬 sys.argv 為 ['Indicators.py', 'AAPL']
+        mock_argv_list = ['Indicators.py', 'AAPL']
+        mock_argv.__getitem__ = lambda s, i: mock_argv_list[i]
+        mock_argv.__len__ = lambda s: len(mock_argv_list)
+
+        # 模擬分析結果
+        mock_analyzer_instance.analyze_multiple_stocks.return_value = {
+            "AAPL": {
+                "date": "2025-06-18",
+                "price": {
+                    "open": 150.0,
+                    "high": 155.0,
+                    "low": 145.0,
+                    "close": 152.0,
+                    "volume": 1000000
+                },
+                "indicators": {
+                    "RSI(14)": 65.5,
+                    "DIF": 1.25,
+                    "MACD": 1.20
+                },
+                "total_records": 100,
+                "interval": "1d",
+                "time_range": "2025-01-01 - 2025-06-18"
+            }
+        }
+
+        # 呼叫 main 函數
+        main()
+
+        # 驗證日期格式是否正確
+        mock_results = \
+            mock_analyzer_instance.analyze_multiple_stocks.return_value
+        assert mock_results["AAPL"]["date"] == "2025-06-18"
+
+        # 驗證報告是否正確顯示日期
+        mock_reporter_instance.print_analysis_summary.assert_called_once_with(
+            mock_results
         )
 
 
