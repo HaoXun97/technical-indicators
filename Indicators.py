@@ -137,7 +137,9 @@ class DataProvider:
                     data = ticker.history(
                         period=adjusted_period,
                         interval=interval_str,
-                        timeout=10  # 添加超時設定
+                        auto_adjust=False,  # 禁用除權除息調整，獲取原始價格
+                        actions=False,      # 禁用股利和股票分割數據
+                        timeout=10          # 添加超時設定
                     )
                     break
                 except Exception as retry_error:
@@ -392,6 +394,61 @@ class IndicatorCalculator:
         }
 
 
+class DecimalPrecisionHelper:
+    """小數位數處理工具類"""
+
+    @staticmethod
+    def get_indicator_decimal_places(indicator_name: str) -> int:
+        """根據指標類型返回建議的小數位數"""
+
+        # 價格相關指標 - 保持原始格式（不強制小數位）
+        price_indicators = [
+            'MA', 'EMA', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'ATR'
+        ]
+
+        # 震盪指標 - 2位
+        oscillators = [
+            'RSI', 'K', 'D', 'J', 'CCI', 'WILLR', 'MOM', 'RSV'
+        ]
+
+        # MACD系列 - 4位（數值較小需要更高精度）
+        macd_indicators = ['DIF', 'MACD', 'MACD_Histogram']
+
+        if any(ind in indicator_name for ind in price_indicators):
+            return 2  # 價格相關指標保持2位
+        elif any(ind in indicator_name for ind in oscillators):
+            return 2  # 震盪指標2位
+        elif any(ind in indicator_name for ind in macd_indicators):
+            return 4  # MACD系列4位
+        else:
+            return 2  # 預設值
+
+    @staticmethod
+    def round_value_by_type(value: Any, name: str = "") -> Any:
+        """根據類型和名稱智能四捨五入數值"""
+        if pd.isna(value) or value is None:
+            return None
+
+        if isinstance(value, (int, float)):
+            if name:
+                decimal_places = (
+                    DecimalPrecisionHelper.get_indicator_decimal_places(name)
+                )
+                return round(float(value), decimal_places)
+            else:
+                return round(float(value), 2)  # 預設2位
+
+        return value
+
+    @staticmethod
+    def round_series_by_name(series: Series, name: str) -> Series:
+        """根據指標名稱四捨五入Series"""
+        decimal_places = (
+            DecimalPrecisionHelper.get_indicator_decimal_places(name)
+        )
+        return series.round(decimal_places)
+
+
 class ResultExporter:
     """結果匯出器"""
 
@@ -403,7 +460,7 @@ class ResultExporter:
     def save_to_json(
         self, results: Dict[str, Any], filename: Optional[str] = None
     ) -> str:
-        """保存結果為 JSON"""
+        """保存結果為 JSON，使用智能小數位數處理"""
         if filename is None:
             filename = "analysis.json"
 
@@ -411,8 +468,32 @@ class ResultExporter:
 
         try:
             # 清理結果，移除無法序列化的物件
-            clean_results: dict[str,
+            clean_results: Dict[str,
                                 Any] = self._clean_results_for_json(results)
+
+            # 使用智能小數位數處理
+            def round_values_intelligently(data, parent_key=""):
+                if isinstance(data, dict):
+                    return {
+                        k: round_values_intelligently(v, k)
+                        for k, v in data.items()
+                    }
+                elif isinstance(data, list):
+                    return [
+                        round_values_intelligently(v, parent_key)
+                        for v in data
+                    ]
+                elif isinstance(data, (int, float)) and not pd.isna(data):
+                    # 對價格數據統一使用2位小數
+                    if parent_key in ['open', 'high', 'low', 'close']:
+                        return round(float(data), 2)
+                    else:
+                        return DecimalPrecisionHelper.round_value_by_type(
+                            data, parent_key
+                        )
+                return data
+
+            clean_results = round_values_intelligently(clean_results)
 
             existing_data: Dict[str, Any] = {}
             # 檢查檔案是否存在且非空
@@ -420,26 +501,26 @@ class ResultExporter:
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:
                         existing_data = json.load(f)
-                    if not isinstance(existing_data, dict):  # 確保讀取的是字典
+                    if not isinstance(existing_data, dict):
                         self.logger.warning(
                             f"現有的 JSON 檔案 {filepath} 格式不正確，將會覆寫。")
                         existing_data = {}
                 except json.JSONDecodeError:
                     self.logger.warning(f"無法解析現有的 JSON 檔案 {filepath}。將會覆寫。")
-                    existing_data = {}  # 如果解析失敗，則視為空字典，避免錯誤
+                    existing_data = {}
                 except Exception as e:
                     self.logger.error(f"讀取現有 JSON 檔案 {filepath} 錯誤: {e}。將會覆寫。")
-                    existing_data = {}  # 其他錯誤也視為空字典
+                    existing_data = {}
 
             # 合併數據：新的結果會覆寫或添加條目
-            # 確保 existing_data 是一個字典以使用 update 方法
             if not isinstance(existing_data, dict):
                 existing_data = {}
             existing_data.update(clean_results)
 
             with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(existing_data, f, ensure_ascii=False,
-                          indent=2, default=str)
+                json.dump(
+                    existing_data, f, ensure_ascii=False, indent=2,
+                    default=str)
 
             return str(filepath)
 
@@ -454,15 +535,23 @@ class ResultExporter:
         indicators: Dict[str, Series],
         interval: str
     ) -> str:
-        """保存歷史數據為 CSV，如果檔案已存在則更新內容。"""
+        """保存歷史數據為 CSV，使用智能小數位數處理"""
         try:
-            # 1. 準備 new_combined_data，並格式化其 'Date' 索引
             new_combined_data: DataFrame = data.copy()
+
+            # 對價格數據進行四捨五入到2位小數
+            price_columns = ['Open', 'High', 'Low', 'Close']
+            for col in price_columns:
+                if col in new_combined_data.columns:
+                    new_combined_data[col] = new_combined_data[col].round(2)
+
+            # 對指標數據使用智能小數位數處理
             for name, series in indicators.items():
-                new_combined_data[name] = series
+                new_combined_data[name] = (
+                    DecimalPrecisionHelper.round_series_by_name(series, name)
+                )
 
             date_format = '%Y-%m-%d %H:%M:%S'
-            # 檢查 interval 是否為日線級別
             if (interval.endswith('d') or
                 interval.endswith('wk') or
                     interval.endswith('mo')):
@@ -470,47 +559,36 @@ class ResultExporter:
 
             if isinstance(new_combined_data.index, pd.DatetimeIndex):
                 if new_combined_data.index.tz is not None:
-                    import pytz  # 確保 pytz 已匯入
+                    import pytz
                     taiwan_tz = pytz.timezone('Asia/Taipei')
                     new_combined_data.index = (
                         new_combined_data.index.tz_convert(taiwan_tz)
                         .tz_localize(None)
                     )
                 new_combined_data.index = pd.Index([
-                    dt.strftime(date_format)  # 使用條件日期格式
+                    dt.strftime(date_format)
                     for dt in new_combined_data.index
                 ], name='Date')
             elif new_combined_data.index.name != 'Date':
-                # 如果索引不是 DatetimeIndex，但名稱不是 'Date'，則設定名稱
-                # 假設此時索引已經是正確的日期字串格式
-                self.logger.debug(
-                    f"CSV Index for {symbol} is not DatetimeIndex and not "
-                    f"named 'Date'. Current name: "
-                    f"{new_combined_data.index.name}. Setting to 'Date'."
-                )
                 new_combined_data.index.name = 'Date'
 
             filename: str = f"{symbol}.csv"
             filepath: Path = self.output_dir / filename
             final_df: DataFrame
 
-            # 2. 如果檔案存在，讀取並合併
             if filepath.exists() and filepath.stat().st_size > 0:
                 try:
                     existing_df = pd.read_csv(
                         filepath, index_col='Date', encoding='utf-8-sig'
                     )
-                    # 確保 existing_df 的索引是字串類型且名為 'Date'
                     if isinstance(existing_df.index, pd.DatetimeIndex):
                         existing_df.index = existing_df.index.strftime(
-                            date_format  # 使用條件日期格式
+                            date_format
                         )
-                    else:  # 如果已是 object/string，確保是 str
+                    else:
                         existing_df.index = existing_df.index.astype(str)
                     existing_df.index.name = 'Date'
 
-                    # 合併數據：new_combined_data 的數據優先
-                    # concat 後，對於重複的索引（日期），保留最後一個（即來自 new_combined_data）
                     merged_df = pd.concat([existing_df, new_combined_data])
                     final_df = merged_df[
                         ~merged_df.index.duplicated(keep='last')
@@ -530,9 +608,8 @@ class ResultExporter:
                     )
                     final_df = new_combined_data.sort_index()
             else:
-                # 檔案不存在或為空，直接使用新數據
                 final_df = new_combined_data.sort_index()
-                if filepath.exists():  # 檔案存在但是空的
+                if filepath.exists():
                     self.logger.info(
                         f"現有的 CSV 檔案 {filepath} 為空。將寫入新數據。"
                     )
@@ -541,7 +618,6 @@ class ResultExporter:
                         f"CSV 檔案不存在。將創建新檔案: {filepath}"
                     )
 
-            # 3. 保存最終的 DataFrame (修正上一版本中錯誤的編號)
             final_df.to_csv(filepath, encoding="utf-8-sig", index=True)
             return str(filepath)
 
@@ -552,13 +628,25 @@ class ResultExporter:
     def _clean_results_for_json(
         self, results: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """清理結果以便 JSON 序列化"""
+        """清理結果以便 JSON 序列化，使用智能小數位數處理"""
         clean_results: Dict[str, Dict[str, Any]] = {}
         for symbol, data in results.items():
             if isinstance(data, dict):
-                clean_data: Dict[str, Any] = {
-                    k: v for k, v in data.items() if not k.startswith("_")
-                }
+                clean_data: Dict[str, Any] = {}
+                for k, v in data.items():
+                    if not k.startswith("_"):
+                        if k == "indicators" and isinstance(v, dict):
+                            # 對指標數據使用智能小數位數處理
+                            clean_data[k] = {
+                                ind_name: (
+                                    DecimalPrecisionHelper.round_value_by_type(
+                                        ind_value, ind_name
+                                    )
+                                )
+                                for ind_name, ind_value in v.items()
+                            }
+                        else:
+                            clean_data[k] = v
                 clean_results[symbol] = clean_data
             else:
                 clean_results[symbol] = data
@@ -620,10 +708,10 @@ class TechnicalAnalyzer:
                     date_format_str  # 使用條件日期格式
                 ),
                 "price": StockPrice(
-                    open=float(latest["Open"]),
-                    high=float(latest["High"]),
-                    low=float(latest["Low"]),
-                    close=float(latest["Close"]),
+                    open=round(float(latest["Open"]), 2),    # 四捨五入到2位小數
+                    high=round(float(latest["High"]), 2),    # 四捨五入到2位小數
+                    low=round(float(latest["Low"]), 2),      # 四捨五入到2位小數
+                    close=round(float(latest["Close"]), 2),  # 四捨五入到2位小數
                     volume=int(latest["Volume"]),
                 ).__dict__,
                 "indicators": self._get_latest_indicator_values(indicators),
@@ -693,15 +781,22 @@ class TechnicalAnalyzer:
     def _get_latest_indicator_values(
         self, indicators: Dict[str, Series]
     ) -> Dict[str, Optional[float]]:
-        """獲取指標的最新值"""
+        """獲取指標的最新值，使用智能小數位數處理"""
         latest_values: dict[str, float | None] = {}
 
         for name, series in indicators.items():
             if isinstance(series, Series) and not series.empty:
                 latest_value: Any = series.iloc[-1]
-                latest_values[name] = (
-                    float(latest_value) if not pd.isna(latest_value) else None
-                )
+                if not pd.isna(latest_value):
+                    # 使用智能小數位數處理
+                    processed_value = (
+                        DecimalPrecisionHelper.round_value_by_type(
+                            latest_value, name
+                        )
+                    )
+                    latest_values[name] = processed_value
+                else:
+                    latest_values[name] = None
 
         return latest_values
 
