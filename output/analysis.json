@@ -7,7 +7,7 @@
       "high": 1055.0,
       "low": 1030.0,
       "close": 1055.0,
-      "volume": 24487013.0
+      "volume": 39350594
     },
     "indicators": {
       "RSI(5)": 70.02,
@@ -36,11 +36,11 @@
       "WILLR": -12.1,
       "MOM": 65.0
     },
-    "total_records": 6335.0,
+    "total_records": 6335,
     "interval": "1d",
     "period": "max",
     "time_range": "2000-01-04 - 2025-06-18",
-    "analysis_time": "2025-06-18 11:52:20"
+    "analysis_time": "2025-06-18 15:02:22"
   },
   "AAPL": {
     "symbol": "AAPL",
@@ -50,7 +50,7 @@
       "high": 198.39,
       "low": 195.21,
       "close": 195.64,
-      "volume": 38736900.0
+      "volume": 38736900
     },
     "indicators": {
       "RSI(5)": 31.14,
@@ -79,11 +79,11 @@
       "WILLR": -85.48,
       "MOM": -7.63
     },
-    "total_records": 11219.0,
+    "total_records": 11219,
     "interval": "1d",
     "period": "max",
     "time_range": "1980-12-12 - 2025-06-17",
-    "analysis_time": "2025-06-18 11:52:21"
+    "analysis_time": "2025-06-18 15:02:22"
   },
   "NFLX": {
     "symbol": "NFLX",
@@ -93,7 +93,7 @@
       "high": 1232.36,
       "low": 1216.09,
       "close": 1220.67,
-      "volume": 1890200.0
+      "volume": 1890200
     },
     "indicators": {
       "RSI(5)": 51.97,
@@ -122,10 +122,10 @@
       "WILLR": -48.7,
       "MOM": 2.73
     },
-    "total_records": 5805.0,
+    "total_records": 5805,
     "interval": "1d",
     "period": "max",
     "time_range": "2002-05-23 - 2025-06-17",
-    "analysis_time": "2025-06-18 11:52:21"
+    "analysis_time": "2025-06-18 15:02:23"
   }
 }

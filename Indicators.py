@@ -156,6 +156,10 @@ class DataProvider:
                 self.logger.warning(f"無法獲取 {formatted_symbol} 的數據")
                 return None
 
+            # 移除 Adj Close 欄位（如果存在）
+            if 'Adj Close' in data.columns:
+                data = data.drop(columns=['Adj Close'])
+
             self.logger.info(f"成功獲取 {formatted_symbol} 數據: {len(data)} 筆")
 
             if use_cache:
@@ -484,9 +488,11 @@ class ResultExporter:
                         for v in data
                     ]
                 elif isinstance(data, (int, float)) and not pd.isna(data):
-                    # 對價格數據統一使用2位小數
+                    # 對特定欄位進行特殊處理
                     if parent_key in ['open', 'high', 'low', 'close']:
-                        return round(float(data), 2)
+                        return round(float(data), 2)  # 價格數據2位小數
+                    elif parent_key in ['total_records', 'volume']:
+                        return int(data)  # 記錄數和成交量保持整數
                     else:
                         return DecimalPrecisionHelper.round_value_by_type(
                             data, parent_key
