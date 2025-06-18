@@ -126,49 +126,100 @@ class DataProvider:
                 period_str, interval_str
             )
 
-            ticker: yf.Ticker = yf.Ticker(formatted_symbol)
+            # 嘗試獲取數據，如果是台股且失敗，則嘗試上櫃市場
+            data: DataFrame = DataFrame()
+            symbols_to_try = [formatted_symbol]
 
-            # 添加額外的錯誤處理和重試機制
-            import time
-            max_retries = 3
-            data: DataFrame = DataFrame()  # 初始化 data 變數
-            for attempt in range(max_retries):
+            # 如果是台股 .TW 後綴，也嘗試 .TWO 後綴
+            if (formatted_symbol.endswith('.TW') and
+                    symbol.isdigit() and len(symbol) == 4):
+                symbols_to_try.append(f"{symbol}.TWO")
+
+            success_symbol = None
+
+            for attempt_symbol in symbols_to_try:
+
+                # 完全禁用所有相關的日誌輸出
+                import io
+                from contextlib import redirect_stderr, redirect_stdout
+
+                # 保存原始日誌級別
+                loggers_to_silence = [
+                    'yfinance',
+                    'urllib3',
+                    'requests',
+                    'urllib3.connectionpool',
+                    'requests.packages.urllib3.connectionpool'
+                ]
+                original_levels = {}
+                for logger_name in loggers_to_silence:
+                    logger = logging.getLogger(logger_name)
+                    original_levels[logger_name] = logger.level
+                    logger.setLevel(logging.CRITICAL)
+
+                # 創建空的輸出流來捕獲所有輸出
+                devnull = io.StringIO()
+
                 try:
-                    data = ticker.history(
-                        period=adjusted_period,
-                        interval=interval_str,
-                        auto_adjust=False,  # 禁用除權除息調整，獲取原始價格
-                        actions=False,      # 禁用股利和股票分割數據
-                        timeout=10          # 添加超時設定
-                    )
+                    with redirect_stderr(devnull), redirect_stdout(devnull):
+                        ticker: yf.Ticker = yf.Ticker(attempt_symbol)
+
+                        # 添加額外的錯誤處理和重試機制
+                        import time
+                        max_retries = 2
+                        for attempt in range(max_retries):
+                            try:
+                                data = ticker.history(
+                                    period=adjusted_period,
+                                    interval=interval_str,
+                                    auto_adjust=False,
+                                    actions=False,
+                                    timeout=10
+                                )
+
+                                # 如果成功獲取數據，跳出重試循環
+                                if not data.empty:
+                                    success_symbol = attempt_symbol
+                                    break
+
+                            except Exception:
+                                if attempt < max_retries - 1:
+                                    time.sleep(0.5)
+                                    continue
+                                else:
+                                    # 只在調試模式下記錄
+                                    pass
+
+                finally:
+                    # 恢復原始日誌級別
+                    for logger_name, level in original_levels.items():
+                        logging.getLogger(logger_name).setLevel(level)
+
+                # 如果成功獲取數據，跳出循環
+                if not data.empty:
                     break
-                except Exception as retry_error:
-                    if attempt < max_retries - 1:
-                        self.logger.warning(
-                            f"嘗試 {attempt + 1} 獲取 {formatted_symbol} "
-                            f"失敗，重試中...")
-                        time.sleep(1)  # 等待1秒後重試
-                        continue
-                    else:
-                        raise retry_error
 
             if data.empty:
-                self.logger.warning(f"無法獲取 {formatted_symbol} 的數據")
+                self.logger.error(
+                    f"❌ 無法獲取 {symbol} 的數據（已嘗試所有可能的市場："
+                    f"{', '.join(symbols_to_try)}）")
                 return None
 
             # 移除 Adj Close 欄位（如果存在）
             if 'Adj Close' in data.columns:
                 data = data.drop(columns=['Adj Close'])
 
-            self.logger.info(f"成功獲取 {formatted_symbol} 數據: {len(data)} 筆")
+            self.logger.info(f"✅ 成功從 {success_symbol} 獲取 {len(data)} 筆數據")
 
             if use_cache:
+                # 使用成功的symbol作為cache key
+                cache_key = f"{success_symbol}_{period_str}_{interval_str}"
                 self._cache[cache_key] = data
 
             return data
 
         except Exception as e:
-            self.logger.error(f"獲取 {symbol} 數據錯誤: {e}")
+            self.logger.error(f"❌ 獲取 {symbol} 數據錯誤: {e}")
             return None
 
     def _format_symbol(self, symbol: str) -> str:
