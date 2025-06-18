@@ -523,11 +523,14 @@ class ResultExporter:
 
         try:
             # 清理結果，移除無法序列化的物件
-            clean_results: Dict[str,
-                                Any] = self._clean_results_for_json(results)
+            clean_results: Dict[str, Any] = self._clean_results_for_json(
+                results
+            )
 
             # 使用智能小數位數處理
-            def round_values_intelligently(data, parent_key=""):
+            def round_values_intelligently(
+                data: Any, parent_key: str = ""
+            ) -> Any:
                 if isinstance(data, dict):
                     return {
                         k: round_values_intelligently(v, k)
