@@ -580,12 +580,25 @@ class StockAnalyzerDB:
                 latest_data_date = data_dates.max()
 
                 # 找出需要新增的數據（包括更早和更新的數據）
-                # 更早的歷史數據
                 historical_data = complete_data[data_dates < earliest_db_date]
-                future_data = complete_data[data_dates >
-                                            latest_db_date]        # 更新的數據
+                future_data = complete_data[data_dates > latest_db_date]
 
-                new_data = pd.concat([historical_data, future_data])
+                # 檢查重疊期間的數據是否需要更新
+                overlap_data = complete_data[
+                    (data_dates >= earliest_db_date) &
+                    (data_dates <= latest_db_date)
+                ]
+
+                # 檢測需要更新的重疊數據
+                outdated_data = self._detect_outdated_data(
+                    symbol, overlap_data)
+                if not outdated_data.empty:
+                    self.reporter.info(
+                        f"{symbol}: 檢測到 {len(outdated_data)} 筆數據需要更新")
+
+                # 合併所有需要處理的數據
+                new_data = pd.concat(
+                    [historical_data, future_data, outdated_data])
 
                 if not new_data.empty:
                     saved_count = self._save_data_to_db(
@@ -595,15 +608,19 @@ class StockAnalyzerDB:
                     # 提供詳細的更新資訊
                     historical_count = len(historical_data)
                     future_count = len(future_data)
+                    updated_count = len(outdated_data)
 
-                    update_msg = f"{symbol}: 新增 {saved_count} 筆數據"
-                    if historical_count > 0 and future_count > 0:
-                        update_msg += f" (歷史: {historical_count} 筆, 最新: "
-                        f"{future_count} 筆)"
-                    elif historical_count > 0:
-                        update_msg += f" (歷史數據: {historical_count} 筆)"
-                    elif future_count > 0:
-                        update_msg += f" (最新數據: {future_count} 筆)"
+                    update_msg = f"{symbol}: 處理 {saved_count} 筆數據"
+                    details = []
+                    if historical_count > 0:
+                        details.append(f"歷史: {historical_count} 筆")
+                    if future_count > 0:
+                        details.append(f"最新: {future_count} 筆")
+                    if updated_count > 0:
+                        details.append(f"更新: {updated_count} 筆")
+
+                    if details:
+                        update_msg += f" ({', '.join(details)})"
 
                     self.reporter.success(update_msg)
 
@@ -624,15 +641,52 @@ class StockAnalyzerDB:
                         self.reporter.info(
                             f"{symbol}: 新增最新數據範圍: {fut_start} ~ {fut_end}")
 
+                    if updated_count > 0:
+                        upd_start = outdated_data.index.min().strftime(
+                            '%Y-%m-%d')
+                        upd_end = outdated_data.index.max().strftime(
+                            '%Y-%m-%d')
+                        self.reporter.info(
+                            f"{symbol}: 更新數據範圍: {upd_start} ~ {upd_end}")
+
                 else:
                     # 檢查是否需要提示使用強制更新
-                    if (earliest_data_date <= latest_db_date and
-                            latest_data_date >= earliest_db_date):
-                        self.reporter.info(f"{symbol}: 數據庫已包含所有可用數據，無需更新")
+                    try:
+                        # 安全地比較日期，避免 Series 布林值問題
+                        earliest_data_condition = (
+                            earliest_data_date <= latest_db_date)
+                        latest_data_condition = (
+                            latest_data_date >= earliest_db_date)
+
+                        # 檢查條件是否為 Series，如果是則使用 any() 方法
+                        if (hasattr(earliest_data_condition, 'any') and
+                                not isinstance(earliest_data_condition, bool)):
+                            earliest_data_check = bool(
+                                earliest_data_condition.any())
+                        else:
+                            earliest_data_check = bool(earliest_data_condition)
+
+                        if (hasattr(latest_data_condition, 'any') and
+                                not isinstance(latest_data_condition, bool)):
+                            latest_data_check = bool(
+                                latest_data_condition.any())
+                        else:
+                            latest_data_check = bool(latest_data_condition)
+
+                        if earliest_data_check and latest_data_check:
+                            self.reporter.info(
+                                f"{symbol}: 數據庫已包含所有可用數據，無需更新")
+                            self.reporter.info(
+                                f"{symbol}: 如需更新已存在的數據，"
+                                f"請使用 force_update=True 參數")
+                        else:
+                            self.reporter.info(
+                                f"{symbol}: 數據庫已包含所有可用數據，無需更新")
+                    except Exception as date_compare_error:
+                        self.logger.warning(
+                            f"{symbol}: 日期比較時發生錯誤: {date_compare_error}")
                         self.reporter.info(
-                            f"{symbol}: 如需更新已存在的數據，請使用 force_update=True 參數")
-                    else:
-                        self.reporter.info(f"{symbol}: 數據庫已包含所有可用數據，無需更新")
+                            f"{symbol}: 數據庫已包含所有可用數據，無需更新")
 
                     result.success = True
                     result.total_records = existing_info['record_count']
@@ -667,6 +721,303 @@ class StockAnalyzerDB:
             self.reporter.error(f"{symbol}: 處理失敗 - {e}")
 
         return result
+
+    def _detect_outdated_data(self, symbol: str,
+                              overlap_data: pd.DataFrame) -> pd.DataFrame:
+        """檢測需要更新的重疊數據
+
+        Args:
+            symbol: 股票代號
+            overlap_data: 與資料庫日期範圍重疊的數據
+
+        Returns:
+            需要更新的數據 DataFrame
+        """
+        if overlap_data.empty:
+            return pd.DataFrame()
+
+        try:
+            # 只檢查最近30天的數據以提升效率
+            from datetime import datetime, timedelta
+
+            # 計算30天前的日期
+            thirty_days_ago = datetime.now().date() - timedelta(days=30)
+
+            # 過濾出最近30天的數據
+            overlap_dates = overlap_data.index.to_series().dt.date
+            recent_overlap_data = overlap_data[overlap_dates >=
+                                               thirty_days_ago]
+
+            if recent_overlap_data.empty:
+                self.logger.info(f"{symbol}: 最近30天內沒有重疊數據需要檢查")
+                return pd.DataFrame()
+
+            self.logger.info(
+                f"{symbol}: 檢查最近30天內的 {len(recent_overlap_data)} 筆重疊數據")
+
+            # 獲取資料庫中對應日期的數據
+            dates_to_check = (recent_overlap_data.index.to_series()
+                              .dt.date.tolist())
+
+            # 如果日期數量過多，分批處理以避免 SQL Server 參數限制
+            batch_size = 1000  # SQL Server 建議的批次大小
+            all_db_data = []
+
+            for i in range(0, len(dates_to_check), batch_size):
+                batch_dates = dates_to_check[i:i + batch_size]
+
+                # 構建查詢條件
+                date_placeholders = ','.join([
+                    ':date' + str(j) for j in range(len(batch_dates))
+                ])
+
+                query = text(f"""
+                SELECT date, open_price, high_price,
+                             low_price, close_price, volume
+                FROM stock_data
+                WHERE symbol = :symbol
+                AND date IN ({date_placeholders})
+                ORDER BY date
+                """)
+
+                # 準備參數
+                params = {'symbol': symbol}
+                for j, date in enumerate(batch_dates):
+                    params[f'date{j}'] = date.strftime('%Y-%m-%d')
+
+                with self.get_connection() as conn:
+                    batch_results = conn.execute(query, params).fetchall()
+                    all_db_data.extend(batch_results)
+
+            if not all_db_data:
+                return recent_overlap_data  # 如果資料庫中沒有數據，返回所有重疊數據
+
+            # 轉換為 DataFrame 以便比較
+            db_df = pd.DataFrame(
+                all_db_data,
+                columns=['date', 'open_price', 'high_price',
+                         'low_price', 'close_price', 'volume']
+            )
+            db_df['date'] = pd.to_datetime(db_df['date']).dt.date
+            db_df.set_index('date', inplace=True)
+
+            outdated_rows = []
+
+            for date_val in recent_overlap_data.index.to_series().dt.date:
+                if date_val in db_df.index:
+                    # 比較 OHLCV 數據
+                    date_mask = (recent_overlap_data.index
+                                 .to_series().dt.date == date_val)
+                    new_row = recent_overlap_data.loc[date_mask].iloc[0]
+                    db_row = db_df.loc[date_val]
+
+                    # 檢查是否有重要差異（調整容差以檢測手動修改）
+                    tolerance = 1e-3  # 增加容差到 0.001，能檢測到手動修改的差異
+                    price_fields = ['Open', 'High', 'Low', 'Close']
+                    db_price_fields = [
+                        'open_price', 'high_price', 'low_price', 'close_price'
+                    ]
+
+                    needs_update = False
+
+                    # 檢查價格數據
+                    for new_field, db_field in zip(price_fields,
+                                                   db_price_fields):
+                        # 安全地處理新數據值
+                        new_val_raw = new_row[new_field]
+                        if pd.notna(new_val_raw):
+                            # 如果是 Series，取第一個值
+                            if hasattr(new_val_raw, 'iloc'):
+                                new_val = float(new_val_raw.iloc[0])
+                            else:
+                                new_val = float(new_val_raw)
+                        else:
+                            new_val = None
+
+                        # 安全地處理資料庫值
+                        try:
+                            db_val_raw = db_row[db_field]
+                            # 如果是 Series，取第一個值
+                            if hasattr(db_val_raw, 'iloc'):
+                                db_val_raw = db_val_raw.iloc[0]
+
+                            # 使用 pandas 的 isna 函數並檢查結果
+                            if hasattr(pd.isna(db_val_raw), 'any'):
+                                # 如果是 Series，使用 any() 方法
+                                is_na = pd.isna(db_val_raw).any()
+                            else:
+                                # 如果是單一值，直接使用布林值
+                                is_na = bool(pd.isna(db_val_raw))
+
+                            if is_na:
+                                db_val = None
+                            else:
+                                # 安全地轉換為 float
+                                if hasattr(db_val_raw, 'iloc'):
+                                    db_val = float(db_val_raw.iloc[0])
+                                else:
+                                    db_val = float(db_val_raw)
+                        except (ValueError, TypeError):
+                            db_val = None
+
+                        if new_val is None and db_val is None:
+                            continue
+                        elif new_val is None or db_val is None:
+                            needs_update = True
+                            self.logger.info(
+                                f"{symbol}: 檢測到 {date_val} {new_field} 值不一致 - "
+                                f"新值: {new_val}, 資料庫值: {db_val}")
+                            break
+                        elif abs(new_val - db_val) > tolerance:
+                            needs_update = True
+                            self.logger.info(
+                                f"{symbol}: 檢測到 {date_val} {new_field} "
+                                f"差異超過容差 - "
+                                f"新值: {new_val:.6f}, 資料庫值: {db_val:.6f}, "
+                                f"差異: {abs(float(new_val) - db_val):.6f}")
+                            break
+
+                    # 檢查成交量
+                    if not needs_update:
+                        new_vol_raw = new_row['Volume']
+                        if pd.notna(new_vol_raw):
+                            # 如果是 Series，取第一個值
+                            if hasattr(new_vol_raw, 'iloc'):
+                                new_vol = int(new_vol_raw.iloc[0])
+                            else:
+                                new_vol = int(new_vol_raw)
+                        else:
+                            new_vol = None
+
+                        # 安全地處理資料庫成交量值
+                        try:
+                            db_vol_raw = db_row['volume']
+                            # 如果是 Series，取第一個值
+                            if hasattr(db_vol_raw, 'iloc'):
+                                db_vol_raw = db_vol_raw.iloc[0]
+
+                            # 使用 pandas 的 isna 函數並檢查結果
+                            if hasattr(pd.isna(db_vol_raw), 'any'):
+                                # 如果是 Series，使用 any() 方法
+                                is_na = pd.isna(db_vol_raw).any()
+                            else:
+                                # 如果是單一值，直接使用布林值
+                                is_na = bool(pd.isna(db_vol_raw))
+
+                            if is_na:
+                                db_vol = None
+                            else:
+                                # 安全地轉換為 int
+                                if hasattr(db_vol_raw, 'iloc'):
+                                    db_vol = int(db_vol_raw.iloc[0])
+                                else:
+                                    db_vol = int(db_vol_raw)
+                        except (ValueError, TypeError):
+                            db_vol = None
+
+                        if new_vol != db_vol:
+                            needs_update = True
+                            self.logger.info(
+                                f"{symbol}: 檢測到 {date_val} Volume 值不一致 - "
+                                f"新值: {new_vol}, 資料庫值: {db_vol}")
+                            # break  # 這裡不需要立即中斷，繼續檢查其他欄位
+
+                    # 檢查是否所有價格都為零（可能被手動修改）
+                    if not needs_update:
+                        try:
+                            open_price_val = db_row['open_price']
+                            high_price_val = db_row['high_price']
+                            low_price_val = db_row['low_price']
+                            close_price_val = db_row['close_price']
+
+                            # 如果是 Series，取第一個值
+                            if hasattr(open_price_val, 'iloc'):
+                                open_price_val = open_price_val.iloc[0]
+                            if hasattr(high_price_val, 'iloc'):
+                                high_price_val = high_price_val.iloc[0]
+                            if hasattr(low_price_val, 'iloc'):
+                                low_price_val = low_price_val.iloc[0]
+                            if hasattr(close_price_val, 'iloc'):
+                                close_price_val = close_price_val.iloc[0]
+
+                            # 安全地轉換為 float 並檢查
+                            try:
+                                # 安全地處理每個價格值
+                                if hasattr(open_price_val, 'iloc'):
+                                    open_val = (float(open_price_val.iloc[0])
+                                                if open_price_val is not None
+                                                else 0)
+                                else:
+                                    open_val = (float(open_price_val)
+                                                if open_price_val is not None
+                                                else 0)
+
+                                if hasattr(high_price_val, 'iloc'):
+                                    high_val = (float(high_price_val.iloc[0])
+                                                if high_price_val is not None
+                                                else 0)
+                                else:
+                                    high_val = (float(high_price_val)
+                                                if high_price_val is not None
+                                                else 0)
+
+                                if hasattr(low_price_val, 'iloc'):
+                                    low_val = (float(low_price_val.iloc[0])
+                                               if low_price_val is not None
+                                               else 0)
+                                else:
+                                    low_val = (float(low_price_val)
+                                               if low_price_val is not None
+                                               else 0)
+
+                                if hasattr(close_price_val, 'iloc'):
+                                    close_val = (float(close_price_val.iloc[0])
+                                                 if close_price_val is not None
+                                                 else 0)
+                                else:
+                                    close_val = (float(close_price_val)
+                                                 if close_price_val is not None
+                                                 else 0)
+
+                                if (open_val == 0 and high_val == 0 and
+                                        low_val == 0 and close_val == 0):
+                                    needs_update = True
+                                    self.logger.info(
+                                        f"{symbol}: 檢測到異常數據 {date_val} - "
+                                        f"所有價格為0"
+                                    )
+                            except (ValueError, TypeError):
+                                # 如果轉換失敗，也認為需要更新
+                                needs_update = True
+                        except Exception:
+                            # 發生其他錯誤時，也認為需要更新
+                            needs_update = True
+
+                    if needs_update:
+                        outdated_rows.append(new_row.name)
+                        self.logger.debug(f"{symbol}: 數據需要更新 {date_val}")
+                else:
+                    # 資料庫中沒有這個日期的數據，需要新增
+                    date_series = recent_overlap_data.index.to_series()
+                    matching_indices = recent_overlap_data.loc[
+                        date_series.dt.date == date_val
+                    ].index
+                    if len(matching_indices) > 0:
+                        outdated_rows.append(matching_indices[0])
+
+            if outdated_rows:
+                result = recent_overlap_data.loc[outdated_rows]
+                self.logger.info(
+                    f"{symbol}: 找到 {len(result)} 筆需要更新的數據（最近30天內）")
+                return result
+            else:
+                self.logger.info(f"{symbol}: 最近30天內沒有需要更新的數據")
+                return pd.DataFrame()
+
+        except Exception as e:
+            self.logger.warning(f"{symbol}: 檢測過時數據時發生錯誤: {e}")
+            # 發生錯誤時，為了安全起見，不更新任何重疊數據
+            return pd.DataFrame()
 
     def _save_data_to_db(self, data: pd.DataFrame,
                          symbol: str, mode: str = 'append') -> int:
@@ -1122,9 +1473,9 @@ def main():
         # 處理股票
         results = analyzer.process_multiple_stocks(
             symbols=target_stocks,
-            period=Period.MAX,
+            period=Period.YEAR_1,
             interval=TimeInterval.DAY_1,
-            force_update=False  # 強制更新模式
+            force_update=False  # 改回 False 使用正常的增量更新模式
         )
 
         # 顯示統計資訊
