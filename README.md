@@ -2,6 +2,8 @@
 
 ## 📋 專案概述
 
+[![Python application](https://github.com/HaoXun97/technical-indicators/actions/workflows/python-app.yml/badge.svg)](https://github.com/HaoXun97/technical-indicators/actions/workflows/python-app.yml)
+
 這是一個重新設計的股票技術分析系統，採用模組化架構，專注於：
 
 1. **智能數據更新**：自動檢查資料庫與外部數據的差異，只更新需要的部分
