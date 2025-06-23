@@ -1,8 +1,8 @@
 # 股票技術分析系統 - 模組化版本
 
-## 📋 專案概述
-
 [![Python application](https://github.com/HaoXun97/technical-indicators/actions/workflows/python-app.yml/badge.svg)](https://github.com/HaoXun97/technical-indicators/actions/workflows/python-app.yml)
+
+## 📋 專案概述
 
 這是一個重新設計的股票技術分析系統，採用模組化架構，專注於：
 
@@ -172,3 +172,7 @@ configparser
 - 實作數據回測功能
 - 添加圖表視覺化
 - 支援多資料來源
+
+## ⚠️ 舊版 (CSV 儲存模式)
+
+舊版使用方式: [前往查看](./OLD_VERSION.md)
