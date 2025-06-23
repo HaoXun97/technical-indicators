@@ -117,11 +117,23 @@ class StockDataProvider:
 
     def _format_symbol(self, symbol: str) -> str:
         """格式化股票代號"""
+        # 特殊符號開頭或包含 =、- 的金融商品，直接回傳原始 symbol
+        if symbol.startswith('^') or '=' in symbol or '-' in symbol:
+            return symbol
+
+        # 常見 Yahoo Finance 市場後綴
+        market_suffixes = (
+            ".TW", ".TWO", ".SS", ".SZ", ".HK", ".KS", ".T", ".AX", ".L",
+            ".TO", ".V", ".SI", ".NZ", ".SA", ".MX", ".ST", ".HE", ".PA",
+            ".MI", ".VI", ".MC", ".SW", ".OL", ".CO", ".IR", ".IS", ".TA",
+            ".BK", ".JK", ".KL", ".SG", ".B", ".PR", ".IL", ".F", ".DE",
+            ".AT", ".BR", ".PL", ".IC", ".NE", ".NS", ".SSX", ".J", ".JO"
+        )
+        if symbol.endswith(market_suffixes):
+            return symbol
+
         if symbol.isdigit() and len(symbol) == 4:
             return f"{symbol}.TW"
-
-        if symbol.endswith((".TW", ".TWO")):
-            return symbol
 
         if (any(c.isalpha() for c in symbol) and
                 len(symbol) <= 5 and not symbol.isdigit()):
