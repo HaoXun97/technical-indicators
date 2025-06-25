@@ -89,24 +89,26 @@ class StockDataService:
 
         return logger
 
-    def test_connection(self) -> bool:
-        """測試資料庫連接"""
+    def test_connection(self, market_type: str = "tw") -> bool:
+        """測試指定市場的資料庫連接"""
         try:
-            success = self.repository.db_manager.test_connection()
+            db_manager = self.repository._get_db_manager(market_type)
+            success = db_manager.test_connection()
             if success:
-                self.reporter.success("資料庫連接測試成功")
+                self.reporter.success(f"{market_type} 資料庫連接測試成功")
             else:
-                self.reporter.error("資料庫連接測試失敗")
+                self.reporter.error(f"{market_type} 資料庫連接測試失敗")
             return success
         except Exception as e:
-            self.reporter.error(f"資料庫連接測試失敗: {e}")
+            self.reporter.error(f"{market_type} 資料庫連接測試失敗: {e}")
             return False
 
     def process_stock(self, symbol: str,
                       period: Union[Period, str] = Period.YEAR_1,
                       interval: Union[TimeInterval, str] = TimeInterval.DAY_1,
                       check_days: int = 30,
-                      expand_history: bool = False) -> ProcessResult:
+                      expand_history: bool = False,
+                      market_type: str = "tw") -> ProcessResult:
         """
         處理單一股票數據
 
@@ -121,14 +123,13 @@ class StockDataService:
         result = ProcessResult(symbol=symbol, success=False)
 
         try:
-            # 標準化間隔字符串
             interval_str = interval.value if isinstance(
                 interval, TimeInterval) else str(interval)
-
             self.reporter.progress(f"開始處理股票 {symbol} (間隔: {interval_str})")
 
             # 步驟1: 檢查資料庫中的現有數據
-            db_info = self.repository.get_stock_data_info(symbol, interval_str)
+            db_info = self.repository.get_stock_data_info(
+                symbol, interval_str, market_type=market_type)
 
             # 步驟2: 從外部API獲取股票數據
             external_data = self.data_provider.get_stock_data(
@@ -224,34 +225,31 @@ class StockDataService:
                 if new_data_parts:
                     total_updated = 0
                     date_ranges = []
-
                     for data_type, data_part in new_data_parts:
                         if not data_part.empty:
                             updated_count = self.repository.upsert_ohlcv_data(
-                                symbol, data_part, interval_str)
+                                symbol,
+                                data_part,
+                                interval_str, market_type=market_type
+                            )
                             total_updated += updated_count
-
                             start_date = (
                                 data_part.index.min().strftime('%Y-%m-%d'))
                             end_date = (
                                 data_part.index.max().strftime('%Y-%m-%d'))
                             date_ranges.append(f"{start_date}~{end_date}")
-
                             type_name = {'historical': '歷史', 'future': '最新',
                                          'updated': '更新'}[
                                 data_type]
                             self.reporter.success(
                                 f"{symbol} ({interval_str}): 處理 "
                                 f"{updated_count} 筆{type_name}數據")
-
                     result.updated_records = total_updated
                     result.date_range = ', '.join(date_ranges)
-
                     # 重新計算技術指標
                     indicator_result = self.update_technical_indicators(
-                        symbol, interval_str)
+                        symbol, interval_str, market_type=market_type)
                     result.indicator_updates = indicator_result
-
                 else:
                     if expand_history:
                         self.reporter.info(
@@ -263,20 +261,17 @@ class StockDataService:
             else:
                 # 全新股票，儲存所有數據
                 saved_count = self.repository.upsert_ohlcv_data(
-                    symbol, external_data, interval_str)
+                    symbol,
+                    external_data,
+                    interval_str,
+                    market_type=market_type
+                )
                 result.new_records = saved_count
-
                 self.reporter.success(
-                    f"{symbol} ({interval_str}): 儲存了 {saved_count} 筆新數據")
-
-                # 設置日期範圍
-                start_date = external_data.index.min().strftime('%Y-%m-%d')
-                end_date = external_data.index.max().strftime('%Y-%m-%d')
-                result.date_range = f"{start_date} ~ {end_date}"
-
-                # 計算技術指標
+                    f"{symbol} ({interval_str}): 新增 {saved_count} 筆數據")
+                # 新增後也要計算技術指標
                 indicator_result = self.update_technical_indicators(
-                    symbol, interval_str)
+                    symbol, interval_str, market_type=market_type)
                 result.indicator_updates = indicator_result
 
             # 步驟5: 獲取最終統計
@@ -294,13 +289,15 @@ class StockDataService:
         return result
 
     def update_technical_indicators(self, symbol: str, interval: str = '1d',
-                                    full_history: bool = False) -> int:
+                                    full_history: bool = False,
+                                    market_type: str = "tw") -> int:
         """重新計算並更新技術指標
 
         Args:
             symbol: 股票代號
             interval: 時間間隔
             full_history: 是否更新完整歷史數據的技術指標
+            market_type: 市場類型
         """
         try:
             self.reporter.progress(f"{symbol} ({interval}): 開始更新技術指標")
@@ -309,11 +306,11 @@ class StockDataService:
                 # 獲取所有OHLCV數據用於計算技術指標
                 self.reporter.info(f"{symbol} ({interval}): 使用完整歷史模式，獲取所有數據")
                 ohlcv_data = self.repository.get_all_ohlcv_data(
-                    symbol, interval)
+                    symbol, interval, market_type=market_type)
             else:
                 # 獲取足夠的OHLCV數據用於計算技術指標（至少200天）
                 ohlcv_data = self.repository.get_latest_ohlcv_data(
-                    symbol, interval, days=500)
+                    symbol, interval, days=500, market_type=market_type)
 
             if ohlcv_data.empty:
                 self.reporter.warning(f"{symbol} ({interval}): 無數據可用於計算技術指標")
@@ -335,7 +332,7 @@ class StockDataService:
 
             # 更新到資料庫
             updated_count = self.repository.update_technical_indicators(
-                symbol, indicators, interval)
+                symbol, indicators, interval, market_type=market_type)
 
             self.reporter.success(
                 f"{symbol} ({interval}): 更新了 {updated_count} 筆技術指標")
@@ -350,7 +347,8 @@ class StockDataService:
                                 interval: Union[TimeInterval,
                                                 str] = TimeInterval.DAY_1,
                                 check_days: int = 30,
-                                expand_history: bool = False
+                                expand_history: bool = False,
+                                market_type: str = "tw"
                                 ) -> Dict[str, ProcessResult]:
         """批量處理多個股票"""
         interval_str = interval.value if isinstance(
@@ -378,7 +376,13 @@ class StockDataService:
                 print(f"\n📊 [{i}/{len(symbols)}] 處理 {symbol} ({interval_str})")
 
             result = self.process_stock(
-                symbol, period, interval, check_days, expand_history)
+                symbol,
+                period,
+                interval,
+                check_days,
+                expand_history,
+                market_type=market_type
+            )
             results[symbol] = result
 
             if result.success:
@@ -413,7 +417,8 @@ class StockDataService:
 
     def force_update_all_indicators(self, symbols: List[str] = None,
                                     interval: str = '1d',
-                                    full_history: bool = True
+                                    full_history: bool = True,
+                                    market_type: str = "tw"
                                     ) -> Dict[str, int]:
         """強制更新所有股票的技術指標
 
@@ -421,10 +426,11 @@ class StockDataService:
             symbols: 股票代號列表，如果為None則獲取所有股票
             interval: 時間間隔
             full_history: 是否更新完整歷史數據的技術指標
+            market_type: 市場類型
         """
         if symbols is None:
-            symbols = self.repository.get_symbols_list(interval)
-
+            symbols = self.repository.get_symbols_list(
+                interval, market_type=market_type)
         mode_text = "完整歷史" if full_history else "最近數據"
         self.reporter.info(
             f"開始強制更新 {len(symbols)} 個股票的技術指標 ({interval}) - {mode_text}模式")
@@ -435,7 +441,7 @@ class StockDataService:
                 f"\n🔄 [{i}/{len(symbols)}] 更新 {symbol} ({interval}) "
                 f"技術指標 ({mode_text})")
             updated_count = self.update_technical_indicators(
-                symbol, interval, full_history)
+                symbol, interval, full_history, market_type=market_type)
             results[symbol] = updated_count
 
             if updated_count > 0:
@@ -445,13 +451,25 @@ class StockDataService:
 
         return results
 
-    def get_database_statistics(self, interval: str = '1d') -> Dict[str, Any]:
+    def get_database_statistics(
+            self,
+            interval: str = '1d',
+            market_type: str = "tw"
+    ) -> Dict[str, Any]:
         """獲取指定間隔的資料庫統計資訊"""
-        return self.repository.get_database_statistics(interval)
+        return self.repository.get_database_statistics(
+            interval,
+            market_type=market_type
+        )
 
-    def get_all_database_statistics(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_database_statistics(
+            self,
+            market_type: str = "tw"
+    ) -> Dict[str, Dict[str, Any]]:
         """獲取所有間隔表的資料庫統計資訊"""
-        return self.repository.get_all_tables_statistics()
+        return self.repository.get_all_tables_statistics(
+            market_type=market_type
+        )
 
     def expand_historical_data(self, symbols: List[str] = None,
                                interval: str = '1d'

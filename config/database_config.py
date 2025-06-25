@@ -12,13 +12,16 @@ import logging
 class DatabaseConfig:
     """資料庫配置類"""
 
-    def __init__(self, config_file: str = "config.ini"):
+    def __init__(self, config_file: str = "config.ini", database: str = None):
         self.config = configparser.ConfigParser()
         self.config.read(config_file, encoding='utf-8')
 
         self.server = self.config.get('database', 'server')
         self.database = self.config.get('database', 'database')
         self.driver = self.config.get('database', 'driver')
+
+        if database:
+            self.database = database
 
         try:
             self.username = self.config.get('database', 'username')
@@ -40,8 +43,8 @@ class DatabaseConfig:
 class DatabaseManager:
     """資料庫管理器"""
 
-    def __init__(self, config_file: str = "config.ini"):
-        self.db_config = DatabaseConfig(config_file)
+    def __init__(self, config_file: str = "config.ini", database: str = None):
+        self.db_config = DatabaseConfig(config_file, database=database)
         self.logger = logging.getLogger(__name__)
 
         # 初始化資料庫連接
