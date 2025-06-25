@@ -23,14 +23,26 @@ def parse_arguments():
 
     # 預設值
     interval = TimeInterval.DAY_1
-    stocks = ["2330", "AAPL"]
+    stocks = ["2330", "2317"]
     indicators_only = False
     show_all_stats = False
     expand_history = False
+    market_type = "tw"  # 預設台股
+
+    # 支援的市場參數
+    market_type_map = {
+        "--tw": "tw",
+        "--us": "us",
+        "--etf": "etf",
+        "--index": "index",
+        "--forex": "forex",
+        "--crypto": "crypto",
+        "--futures": "futures"
+    }
 
     if not args:
         return (stocks, interval, indicators_only,
-                show_all_stats, expand_history)
+                show_all_stats, expand_history, market_type)
 
     # 檢查特殊模式
     if "--indicators-only" in args:
@@ -44,6 +56,13 @@ def parse_arguments():
     if "--expand-history" in args:
         expand_history = True
         args.remove("--expand-history")
+
+    # 檢查市場參數
+    for k in list(market_type_map.keys()):
+        if k in args:
+            market_type = market_type_map[k]
+            args.remove(k)
+            break
 
     # 檢查間隔參數
     interval_map = {
@@ -67,7 +86,14 @@ def parse_arguments():
     if args:
         stocks = args
 
-    return stocks, interval, indicators_only, show_all_stats, expand_history
+    return (
+        stocks,
+        interval,
+        indicators_only,
+        show_all_stats,
+        expand_history,
+        market_type
+    )
 
 
 def main():
@@ -75,13 +101,13 @@ def main():
     try:
         # 解析命令行參數
         (stocks, interval, indicators_only,
-         show_all_stats, expand_history) = parse_arguments()
+         show_all_stats, expand_history, market_type) = parse_arguments()
 
         # 創建服務實例
         service = StockDataService()
 
         # 測試資料庫連接
-        if not service.test_connection():
+        if not service.test_connection(market_type=market_type):
             print("❌ 資料庫連接失敗，程式結束")
             return
 
@@ -90,11 +116,13 @@ def main():
         print("🚀 股票技術分析系統 - 模組化版本")
         print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"⏰ 時間間隔: {interval_str}")
+        print(f"🌏 市場類型: {market_type}")
 
         # 顯示所有資料表統計資訊模式
         if show_all_stats:
             print("📊 顯示所有資料表統計資訊模式")
-            all_stats = service.get_all_database_statistics()
+            all_stats = service.get_all_database_statistics(
+                market_type=market_type)
             print_all_statistics(all_stats)
             return
 
@@ -108,7 +136,11 @@ def main():
             print("   3️⃣  更新資料庫中的技術指標欄位")
 
             results = service.force_update_all_indicators(
-                stocks, interval_str, full_history=True)
+                stocks,
+                interval_str,
+                full_history=True,
+                market_type=market_type
+            )
 
             total_updated = sum(results.values())
             success_count = sum(1 for count in results.values() if count > 0)
@@ -129,21 +161,18 @@ def main():
             print("   3️⃣  比對並新增更早的歷史數據")
             print("   4️⃣  重新計算技術指標")
 
-            # 使用MAX期間以獲取所有可用的歷史數據
             results = service.process_multiple_stocks(
                 symbols=stocks,
-                period=Period.MAX,  # 修改：使用 MAX 期間獲取所有歷史數據
+                period=Period.MAX,
                 interval=interval,
-                expand_history=True
+                expand_history=True,
+                market_type=market_type
             )
 
-            # 顯示處理結果摘要
             print(format_processing_summary(results))
-
-            # 顯示指定間隔的資料庫統計資訊
-            stats = service.get_database_statistics(interval_str)
+            stats = service.get_database_statistics(
+                interval_str, market_type=market_type)
             print_statistics(stats)
-
             print(f"\n✅ 歷史數據擴展完成！(間隔: {interval_str})")
             print("📝 詳細日誌請查看: stock_analyzer.log")
             return
@@ -156,32 +185,26 @@ def main():
         print("   3️⃣  更新OHLCV數據")
         print("   4️⃣  重新計算技術指標")
 
-        # 處理股票數據
         results = service.process_multiple_stocks(
             symbols=stocks,
             period=Period.YEAR_1,
             interval=interval,
-            check_days=30,  # 只檢查最近30天的數據差異
-            expand_history=False
+            check_days=30,
+            expand_history=False,
+            market_type=market_type
         )
 
-        # 顯示處理結果摘要
         print(format_processing_summary(results))
-
-        # 顯示指定間隔的資料庫統計資訊
-        stats = service.get_database_statistics(interval_str)
+        stats = service.get_database_statistics(
+            interval_str, market_type=market_type)
         print_statistics(stats)
-
         print(f"\n✅ 程式執行完成！(間隔: {interval_str})")
         print("📝 詳細日誌請查看: stock_analyzer.log")
-
-        # 返回處理結果供後續使用
         return results
 
     except Exception as e:
         print(f"\n❌ 程式執行錯誤: {e}")
         import logging
-
         logging.error(f"主程式錯誤: {e}", exc_info=True)
 
 
@@ -191,7 +214,16 @@ def show_help():
 🚀 股票技術分析系統 - 使用說明
 
 基本用法:
-  python main.py [選項] [股票代號...]
+  python main.py [市場選項] [時間間隔選項] [功能選項] [股票代號...]
+
+市場選項:
+  --tw        台股 (預設)
+  --us        美股
+  --etf       ETF
+  --index     指數
+  --forex     外匯
+  --crypto    加密貨幣
+  --futures   期貨
 
 時間間隔選項:
   --1m    1分鐘數據 (存入 stock_data_1m)
@@ -210,19 +242,19 @@ def show_help():
   --help                顯示此幫助資訊
 
 使用範例:
-  python main.py                    # 使用預設股票和日線數據
-  python main.py 2330 2317          # 指定股票，使用日線數據
-  python main.py --1h 2330          # 使用1小時數據處理2330
-  python main.py --5m 2330 2317     # 使用5分鐘數據處理多個股票
-  python main.py --indicators-only --1d 2330  # 僅更新日線技術指標
-  python main.py --show-all-stats   # 顯示所有資料表統計
-  python main.py --expand-history 2330  # 擴展2330的歷史數據
-  python main.py --expand-history --1d 2330 2317  # 擴展多個股票的日線歷史數據
+  python main.py                    # 使用預設股票和日線數據 (台股)
+  python main.py --us AAPL          # 查詢美股AAPL
+  python main.py --tw 2330 2317    # 查詢台股2330、2317
+  python main.py --etf 0050         # 查詢台灣ETF 0050
+  python main.py --1h --us TSLA     # 查詢美股TSLA 1小時線
+  python main.py --indicators-only --us AAPL  # 僅更新美股AAPL技術指標
+  python main.py --show-all-stats --us   # 顯示美股所有資料表統計
+  python main.py --expand-history --us AAPL  # 擴展美股AAPL歷史數據
 
 📊 歷史數據擴展功能:
   --expand-history 選項會：
   1. 檢查資料庫中現有的數據範圍
-  2. 獲取所有可用的歷史數據（使用max期間）
+  2. 獲取所有可用的歷史數據 (使用max期間)
   3. 自動新增比資料庫更早的歷史數據
   4. 重新計算所有技術指標
 
