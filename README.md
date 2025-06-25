@@ -65,11 +65,13 @@
 ### 基本使用
 
 ```bash
-# 使用預設股票列表 (2330, AAPL) (預設一年日 K 資料)
-python main.py
+
+# 基本用法
+python main.py [市場選項] [時間間隔選項] [功能選項] [股票代號...]
 
 # 指定特定股票
-python main.py 2330 2454 AAPL TSLA
+python main.py 2330 2454      # 預設台股可不用輸入市場選項
+python main.py --us AAPL NVDA
 
 # 特定數據間隔 (60 分 K)
 python main.py --1h 2330
@@ -77,17 +79,26 @@ python main.py --1h 2330
 # 顯示幫助資訊
 python main.py --help
 
-# 只更新技術指標（不檢查OHLCV數據）
-python main.py --indicators-only
-
-# 只更新特定股票 60 分 K 的技術指標
-python main.py --indicators-only --1h 2330 AAPL
+# 重新計算技術指標（不更新 OHLCV 數據）
+python main.py --indicators-only 2330
 
 # 擴展歷史數據模式（獲取比資料庫更早的數據）
 python main.py --expand-history 2330
 
 # 顯示所有資料表的統計資訊
 python main.py --show-all-stats
+```
+
+### 市場選項
+
+```
+--tw 台股 (預設)
+--us 美股
+--etf ETF
+--index 指數
+--forex 外匯
+--crypto 加密貨幣
+--futures 期貨
 ```
 
 ## ⚙️ 配置說明

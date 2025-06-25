@@ -23,7 +23,7 @@ def parse_arguments():
 
     # 預設值
     interval = TimeInterval.DAY_1
-    stocks = ["2330", "AAPL"]
+    stocks = ["2330", "2317"]
     indicators_only = False
     show_all_stats = False
     expand_history = False
