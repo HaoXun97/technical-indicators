@@ -113,6 +113,7 @@ class StockDataRepository:
                         cci DECIMAL(12,4),
                         willr DECIMAL(8,4),
                         mom DECIMAL(12,4),
+                        pattern_signals NVARCHAR(1000),
                         created_at DATETIME2 DEFAULT GETDATE(),
                         updated_at DATETIME2 DEFAULT GETDATE()
                     )
@@ -176,6 +177,36 @@ class StockDataRepository:
                 self.logger.info(f"{table_name} 資料表創建可能有問題，但嘗試繼續執行")
             else:
                 raise
+
+    def _ensure_pattern_signals_column(self, interval: str,
+                                       market_type: str = "tw"):
+        """確保資料表有 pattern_signals 欄位"""
+        table_name = self._get_table_name(interval)
+        db_manager = self._get_db_manager(market_type)
+        try:
+            # 檢查 pattern_signals 欄位是否存在
+            check_column_sql = text("""
+            SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = :table_name AND COLUMN_NAME = 'pattern_signals'
+            """)
+            with db_manager.get_connection() as conn:
+                result = conn.execute(
+                    check_column_sql, {"table_name": table_name}).fetchone()
+                column_exists = result[0] > 0
+
+                if not column_exists:
+                    # 新增 pattern_signals 欄位
+                    add_column_sql = text(f"""
+                    ALTER TABLE {table_name}
+                    ADD pattern_signals NVARCHAR(1000)
+                    """)
+                    conn.execute(add_column_sql)
+                    conn.commit()
+                    self.logger.info(f"為 {table_name} 新增 pattern_signals 欄位")
+                else:
+                    self.logger.info(f"{table_name} 的 pattern_signals 欄位已存在")
+        except Exception as e:
+            self.logger.error(f"檢查/新增 {table_name} pattern_signals 欄位失敗: {e}")
 
     def get_stock_data_info(
         self,
@@ -273,6 +304,8 @@ class StockDataRepository:
                 if not df.empty:
                     df['datetime'] = pd.to_datetime(df['datetime'])
                     df.set_index('datetime', inplace=True)
+                    # 標準化欄位名稱，與 get_latest_ohlcv_data 保持一致
+                    df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
                 return df
         except Exception as e:
             self.logger.error(f"獲取 {table_name} 所有數據失敗: {e}")
@@ -458,6 +491,48 @@ class StockDataRepository:
                     f"{symbol}: 成功更新 {table_name} 中 {updated_count} 筆技術指標")
         except Exception as e:
             self.logger.error(f"更新 {table_name} 技術指標失敗: {e}")
+            raise
+        return updated_count
+
+    def update_pattern_signals(
+            self,
+            symbol: str,
+            pattern_signals: pd.Series,
+            interval: str = '1d',
+            market_type: str = "tw"
+    ) -> int:
+        """更新指定間隔表的型態訊號"""
+        if pattern_signals.empty:
+            return 0
+
+        self._ensure_pattern_signals_column(interval, market_type)
+        table_name = self._get_table_name(interval)
+        db_manager = self._get_db_manager(market_type)
+
+        update_sql = text(f"""
+        UPDATE {table_name}
+        SET pattern_signals = :pattern_signals, updated_at = GETDATE()
+        WHERE symbol = :symbol AND datetime = :datetime
+        """)
+
+        updated_count = 0
+        try:
+            with db_manager.get_connection() as conn:
+                for dt, signals in pattern_signals.items():
+                    params = {
+                        'symbol': symbol,
+                        'datetime': (dt.to_pydatetime()
+                                     if isinstance(dt, pd.Timestamp) else dt),
+                        'pattern_signals': signals if signals else None
+                    }
+                    result = conn.execute(update_sql, params)
+                    if result.rowcount > 0:
+                        updated_count += 1
+                conn.commit()
+                self.logger.info(
+                    f"{symbol}: 成功更新 {table_name} 中 {updated_count} 筆型態訊號")
+        except Exception as e:
+            self.logger.error(f"更新 {table_name} 型態訊號失敗: {e}")
             raise
         return updated_count
 

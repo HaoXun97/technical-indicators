@@ -246,8 +246,8 @@ class StockDataService:
                                 f"{updated_count} 筆{type_name}數據")
                     result.updated_records = total_updated
                     result.date_range = ', '.join(date_ranges)
-                    # 重新計算技術指標
-                    indicator_result = self.update_technical_indicators(
+                    # 重新計算技術指標和型態訊號
+                    indicator_result = self.update_indicators_and_patterns(
                         symbol, interval_str, market_type=market_type)
                     result.indicator_updates = indicator_result
                 else:
@@ -269,8 +269,8 @@ class StockDataService:
                 result.new_records = saved_count
                 self.reporter.success(
                     f"{symbol} ({interval_str}): 新增 {saved_count} 筆數據")
-                # 新增後也要計算技術指標
-                indicator_result = self.update_technical_indicators(
+                # 新增後也要計算技術指標和型態訊號
+                indicator_result = self.update_indicators_and_patterns(
                     symbol, interval_str, market_type=market_type)
                 result.indicator_updates = indicator_result
 
@@ -486,3 +486,136 @@ class StockDataService:
             interval=TimeInterval.DAY_1 if interval == '1d' else interval,
             expand_history=True
         )
+
+    def update_pattern_signals_for_stocks(
+            self,
+            symbols: List[str],
+            interval: str = '1d',
+            market_type: str = "tw",
+            recent_only: bool = False
+    ) -> Dict[str, int]:
+        """為多個股票更新K線型態訊號
+
+        Args:
+            symbols: 股票代號列表
+            interval: 時間間隔
+            market_type: 市場類型
+            recent_only: 是否僅更新最近數據（預設False=所有歷史數據）
+
+        Returns:
+            Dict[str, int]: 每個股票的更新筆數
+        """
+        from pattern_detection.pattern_detection import (
+            detect_patterns, combine_patterns
+        )
+
+        results = {}
+
+        for symbol in symbols:
+            try:
+                self.reporter.progress(f"開始處理 {symbol} 的K線型態偵測")
+
+                # 獲取OHLCV數據
+                if recent_only:
+                    # 僅獲取最近30筆數據
+                    ohlcv_data = self.repository.get_latest_ohlcv_data(
+                        symbol, interval, days=30, market_type=market_type)
+                    self.reporter.info(f"{symbol}: 獲取最近30筆數據進行型態偵測")
+                else:
+                    # 獲取所有歷史數據
+                    ohlcv_data = self.repository.get_all_ohlcv_data(
+                        symbol, interval, market_type=market_type)
+                    self.reporter.info(f"{symbol}: 獲取所有歷史數據進行型態偵測")
+
+                if ohlcv_data.empty:
+                    self.reporter.warning(f"{symbol}: 無數據可用於型態偵測")
+                    results[symbol] = 0
+                    continue
+
+                if len(ohlcv_data) < 10:
+                    self.reporter.warning(
+                        f"{symbol}: 數據不足（{len(ohlcv_data)} 筆），"
+                        f"無法進行型態偵測")
+                    results[symbol] = 0
+                    continue                # 重新命名欄位以符合 pattern_detection 的需求
+                pattern_df = ohlcv_data.copy()
+                pattern_df = pattern_df.rename(columns={
+                    'Open': 'open',
+                    'High': 'high',
+                    'Low': 'low',
+                    'Close': 'close'
+                })
+
+                # 確保必要欄位存在
+                required_cols = ['open', 'high', 'low', 'close']
+                missing_cols = [col for col in required_cols
+                                if col not in pattern_df.columns]
+                if missing_cols:
+                    self.reporter.warning(
+                        f"{symbol}: 缺少必要欄位: {missing_cols}")
+                    results[symbol] = 0
+                    continue
+
+                # 確保數據類型為 float64 (double)
+                for col in required_cols:
+                    pattern_df[col] = pd.to_numeric(
+                        pattern_df[col], errors='coerce').astype('float64')
+
+                # 進行型態偵測
+                pattern_df = detect_patterns(pattern_df)
+
+                # 組合型態訊號
+                pattern_df['PatternSignals'] = pattern_df.apply(
+                    combine_patterns, axis=1)
+
+                # 篩選出有型態訊號的數據
+                signals_series = pattern_df['PatternSignals']
+
+                # 更新到資料庫
+                updated_count = self.repository.update_pattern_signals(
+                    symbol, signals_series, interval, market_type=market_type)
+
+                results[symbol] = updated_count
+                self.reporter.success(
+                    f"{symbol}: 成功更新 {updated_count} 筆型態訊號")
+
+            except Exception as e:
+                self.reporter.error(f"{symbol}: 型態偵測失敗 - {e}")
+                results[symbol] = 0
+
+        return results
+
+    def update_indicators_and_patterns(self, symbol: str, interval: str = '1d',
+                                       full_history: bool = False,
+                                       market_type: str = "tw") -> int:
+        """重新計算並更新技術指標和K線型態訊號
+
+        Args:
+            symbol: 股票代號
+            interval: 時間間隔
+            full_history: 是否更新完整歷史數據
+            market_type: 市場類型
+
+        Returns:
+            int: 更新的筆數
+        """
+        try:
+            # 更新技術指標
+            indicator_count = self.update_technical_indicators(
+                symbol, interval, full_history, market_type)
+
+            # 更新型態訊號（正常模式只更新最近30筆）
+            pattern_results = self.update_pattern_signals_for_stocks(
+                [symbol], interval, market_type, recent_only=True)
+            pattern_count = pattern_results.get(symbol, 0)
+
+            self.reporter.info(
+                f"{symbol} ({interval}): 技術指標更新 {indicator_count} 筆，"
+                f"型態訊號更新 {pattern_count} 筆")
+
+            return indicator_count
+
+        except Exception as e:
+            self.reporter.error(
+                f"{symbol} ({interval}): 指標和型態更新失敗 - {e}")
+            return 0

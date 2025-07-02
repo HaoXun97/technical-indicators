@@ -27,6 +27,7 @@ def parse_arguments():
     indicators_only = False
     show_all_stats = False
     expand_history = False
+    pattern_only = False
     market_type = "tw"  # 預設台股
 
     # 支援的市場參數
@@ -42,7 +43,7 @@ def parse_arguments():
 
     if not args:
         return (stocks, interval, indicators_only,
-                show_all_stats, expand_history, market_type)
+                show_all_stats, expand_history, pattern_only, market_type)
 
     # 檢查特殊模式
     if "--indicators-only" in args:
@@ -56,6 +57,10 @@ def parse_arguments():
     if "--expand-history" in args:
         expand_history = True
         args.remove("--expand-history")
+
+    if "--pattern" in args:
+        pattern_only = True
+        args.remove("--pattern")
 
     # 檢查市場參數
     for k in list(market_type_map.keys()):
@@ -92,6 +97,7 @@ def parse_arguments():
         indicators_only,
         show_all_stats,
         expand_history,
+        pattern_only,
         market_type
     )
 
@@ -100,8 +106,8 @@ def main():
     """主程式"""
     try:
         # 解析命令行參數
-        (stocks, interval, indicators_only,
-         show_all_stats, expand_history, market_type) = parse_arguments()
+        (stocks, interval, indicators_only, show_all_stats,
+         expand_history, pattern_only, market_type) = parse_arguments()
 
         # 創建服務實例
         service = StockDataService()
@@ -175,6 +181,29 @@ def main():
             print_statistics(stats)
             print(f"\n✅ 歷史數據擴展完成！(間隔: {interval_str})")
             print("📝 詳細日誌請查看: stock_analyzer.log")
+            return        # 型態偵測模式
+        if pattern_only:
+            print("🔍 K線型態偵測模式 - 完整歷史數據")
+            print(f"🎯 目標股票: {', '.join(stocks)}")
+            print("📋 處理流程:")
+            print("   1️⃣  獲取所有歷史OHLCV數據")
+            print("   2️⃣  進行完整K線型態偵測")
+            print("   3️⃣  更新資料庫中的型態訊號欄位")
+
+            results = service.update_pattern_signals_for_stocks(
+                stocks,
+                interval_str,
+                market_type=market_type,
+                recent_only=False
+            )
+
+            total_updated = sum(results.values())
+            success_count = sum(1 for count in results.values() if count > 0)
+
+            print(f"\n📊 K線型態偵測完成 ({interval_str})")
+            print(f"✅ 成功更新: {success_count}/{len(results)} 個股票")
+            print(f"📈 總更新筆數: {total_updated:,} 筆")
+            print("📝 已完成所有歷史數據的K線型態分析")
             return
 
         # 正常處理模式
@@ -237,6 +266,7 @@ def show_help():
 
 功能選項:
   --indicators-only     僅更新技術指標，不檢查OHLCV數據
+  --pattern             僅更新K線型態訊號（完整歷史數據）
   --show-all-stats      顯示所有資料表的統計資訊
   --expand-history      擴展歷史數據模式（獲取比資料庫更早的數據）
   --help                顯示此幫助資訊
@@ -248,13 +278,14 @@ def show_help():
   python main.py --etf 0050         # 查詢台灣ETF 0050
   python main.py --1h --us TSLA     # 查詢美股TSLA 1小時線
   python main.py --indicators-only --us AAPL  # 僅更新美股AAPL技術指標
+  python main.py --pattern --tw 2330  # 更新台股2330完整歷史型態訊號
   python main.py --show-all-stats --us   # 顯示美股所有資料表統計
   python main.py --expand-history --us AAPL  # 擴展美股AAPL歷史數據
 
 📊 歷史數據擴展功能:
   --expand-history 選項會：
   1. 檢查資料庫中現有的數據範圍
-  2. 獲取所有可用的歷史數據 (使用max期間)
+  2. 獲取所有可用的歷史數據 (使用 max 期間)
   3. 自動新增比資料庫更早的歷史數據
   4. 重新計算所有技術指標
 
@@ -263,12 +294,17 @@ def show_help():
   - 新增股票需要完整歷史數據
   - 資料庫數據不完整需要補充
 
-📊 資料表對應:
-  每個時間間隔會自動創建對應的資料表，如：
-  - 1分鐘數據 → stock_data_1m
-  - 5分鐘數據 → stock_data_5m
-  - 1小時數據 → stock_data_1h
-  - 日線數據 → stock_data_1d
+🔍 K線型態偵測功能:
+  --pattern 選項：
+  1. 獲取所有歷史OHLCV數據
+  2. 使用TA-Lib進行完整K線型態偵測
+  3. 將型態訊號存入pattern_signals欄位
+
+📊 正常模式（不指定特殊選項）會同時：
+  1. 更新OHLCV數據
+  2. 計算技術指標
+  3. 進行K線型態偵測
+  4. 將所有結果存入資料庫
 """
     print(help_text)
 
