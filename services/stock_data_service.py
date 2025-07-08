@@ -38,23 +38,23 @@ class ProgressReporter:
 
     def info(self, message: str):
         self.logger.info(message)
-        print(f"ℹ️  {message}")
+        print(f"ℹ️  {message}", flush=True)
 
     def success(self, message: str):
         self.logger.info(f"SUCCESS: {message}")
-        print(f"✅ {message}")
+        print(f"✅ {message}", flush=True)
 
     def warning(self, message: str):
         self.logger.warning(message)
-        print(f"⚠️  {message}")
+        print(f"⚠️  {message}", flush=True)
 
     def error(self, message: str):
         self.logger.error(message)
-        print(f"❌ {message}")
+        print(f"❌ {message}", flush=True)
 
     def progress(self, message: str):
         self.logger.debug(message)
-        print(f"🔄 {message}")
+        print(f"🔄 {message}", flush=True)
 
 
 class StockDataService:
@@ -371,9 +371,11 @@ class StockDataService:
             if expand_history:
                 print(
                     f"\n📊 [{i}/{len(symbols)}] 擴展歷史數據 "
-                    f"{symbol} ({interval_str})")
+                    f"{symbol} ({interval_str})", flush=True)
             else:
-                print(f"\n📊 [{i}/{len(symbols)}] 處理 {symbol} ({interval_str})")
+                print(
+                    f"\n📊 [{i}/{len(symbols)}] 處理 {symbol} ({interval_str})",
+                    flush=True)
 
             result = self.process_stock(
                 symbol,
@@ -393,25 +395,28 @@ class StockDataService:
                 if result.updated_records > 0 or result.new_records > 0:
                     print(f"   ✅ 成功 | 新增: {result.new_records} 筆 | "
                           f"更新: {result.updated_records} 筆 | "
-                          f"指標: {result.indicator_updates} 筆")
-                    print(f"   📅 時間範圍: {result.date_range}")
+                          f"指標: {result.indicator_updates} 筆", flush=True)
+                    print(f"   📅 時間範圍: {result.date_range}", flush=True)
                 else:
-                    print(f"   ✅ 成功 | 無需更新 | 總計: {result.total_records} 筆")
+                    print(
+                        f"   ✅ 成功 | 無需更新 | 總計: {result.total_records} 筆",
+                        flush=True)
 
-                print(f"   ⏱️  處理時間: {result.processing_time:.2f} 秒")
+                print(
+                    f"   ⏱️  處理時間: {result.processing_time:.2f} 秒", flush=True)
             else:
-                print(f"   ❌ 失敗: {result.error_message}")
+                print(f"   ❌ 失敗: {result.error_message}", flush=True)
 
         # 顯示總結
-        print(f"\n{'='*60}")
+        print(f"\n{'='*60}", flush=True)
         if expand_history:
-            print(f"📈 歷史數據擴展完成 ({interval_str})")
+            print(f"📈 歷史數據擴展完成 ({interval_str})", flush=True)
         else:
-            print(f"📈 批量處理完成 ({interval_str})")
-        print(f"✅ 成功: {success_count}/{len(symbols)} 個股票")
-        print(f"📊 新增記錄: {total_new_records:,} 筆")
-        print(f"📊 更新記錄: {total_updates:,} 筆")
-        print(f"{'='*60}")
+            print(f"📈 批量處理完成 ({interval_str})", flush=True)
+        print(f"✅ 成功: {success_count}/{len(symbols)} 個股票", flush=True)
+        print(f"📊 新增記錄: {total_new_records:,} 筆", flush=True)
+        print(f"📊 更新記錄: {total_updates:,} 筆", flush=True)
+        print(f"{'='*60}", flush=True)
 
         return results
 
@@ -439,15 +444,15 @@ class StockDataService:
         for i, symbol in enumerate(symbols, 1):
             print(
                 f"\n🔄 [{i}/{len(symbols)}] 更新 {symbol} ({interval}) "
-                f"技術指標 ({mode_text})")
+                f"技術指標 ({mode_text})", flush=True)
             updated_count = self.update_technical_indicators(
                 symbol, interval, full_history, market_type=market_type)
             results[symbol] = updated_count
 
             if updated_count > 0:
-                print(f"   ✅ 更新了 {updated_count} 筆技術指標")
+                print(f"   ✅ 更新了 {updated_count} 筆技術指標", flush=True)
             else:
-                print("   ⚠️  無更新或數據不足")
+                print("   ⚠️  無更新或數據不足", flush=True)
 
         return results
 

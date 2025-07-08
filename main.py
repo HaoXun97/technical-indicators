@@ -114,19 +114,19 @@ def main():
 
         # 測試資料庫連接
         if not service.test_connection(market_type=market_type):
-            print("❌ 資料庫連接失敗，程式結束")
+            print("❌ 資料庫連接失敗，程式結束", flush=True)
             return
 
         interval_str = interval.value
 
-        print("🚀 股票技術分析系統 - 模組化版本")
-        print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"⏰ 時間間隔: {interval_str}")
-        print(f"🌏 市場類型: {market_type}")
+        print("🚀 股票技術分析系統 - 模組化版本", flush=True)
+        print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
+        print(f"⏰ 時間間隔: {interval_str}", flush=True)
+        print(f"🌏 市場類型: {market_type}", flush=True)
 
         # 顯示所有資料表統計資訊模式
         if show_all_stats:
-            print("📊 顯示所有資料表統計資訊模式")
+            print("📊 顯示所有資料表統計資訊模式", flush=True)
             all_stats = service.get_all_database_statistics(
                 market_type=market_type)
             print_all_statistics(all_stats)
@@ -134,12 +134,12 @@ def main():
 
         # 僅更新技術指標模式
         if indicators_only:
-            print("🔄 技術指標更新模式 - 完整歷史數據")
-            print(f"🎯 目標股票: {', '.join(stocks)}")
-            print("📋 處理流程:")
-            print("   1️⃣  獲取每個股票的所有歷史OHLCV數據")
-            print("   2️⃣  重新計算所有技術指標")
-            print("   3️⃣  更新資料庫中的技術指標欄位")
+            print("🔄 技術指標更新模式 - 完整歷史數據", flush=True)
+            print(f"🎯 目標股票: {', '.join(stocks)}", flush=True)
+            print("📋 處理流程:", flush=True)
+            print("   1️⃣  獲取每個股票的所有歷史OHLCV數據", flush=True)
+            print("   2️⃣  重新計算所有技術指標", flush=True)
+            print("   3️⃣  更新資料庫中的技術指標欄位", flush=True)
 
             results = service.force_update_all_indicators(
                 stocks,
@@ -151,21 +151,21 @@ def main():
             total_updated = sum(results.values())
             success_count = sum(1 for count in results.values() if count > 0)
 
-            print(f"\n📊 技術指標更新完成 ({interval_str})")
-            print(f"✅ 成功更新: {success_count}/{len(results)} 個股票")
-            print(f"📈 總更新筆數: {total_updated:,} 筆")
-            print("📝 已重新計算所有歷史數據的技術指標")
+            print(f"\n📊 技術指標更新完成 ({interval_str})", flush=True)
+            print(f"✅ 成功更新: {success_count}/{len(results)} 個股票", flush=True)
+            print(f"📈 總更新筆數: {total_updated:,} 筆", flush=True)
+            print("📝 已重新計算所有歷史數據的技術指標", flush=True)
             return
 
         # 歷史數據擴展模式
         if expand_history:
-            print("🔄 歷史數據擴展模式")
-            print(f"🎯 目標股票: {', '.join(stocks)}")
-            print("📋 處理流程:")
-            print("   1️⃣  檢查資料庫現有數據範圍")
-            print("   2️⃣  獲取完整歷史數據")
-            print("   3️⃣  比對並新增更早的歷史數據")
-            print("   4️⃣  重新計算技術指標")
+            print("🔄 歷史數據擴展模式", flush=True)
+            print(f"🎯 目標股票: {', '.join(stocks)}", flush=True)
+            print("📋 處理流程:", flush=True)
+            print("   1️⃣  檢查資料庫現有數據範圍", flush=True)
+            print("   2️⃣  獲取完整歷史數據", flush=True)
+            print("   3️⃣  比對並新增更早的歷史數據", flush=True)
+            print("   4️⃣  重新計算技術指標", flush=True)
 
             results = service.process_multiple_stocks(
                 symbols=stocks,
@@ -175,20 +175,20 @@ def main():
                 market_type=market_type
             )
 
-            print(format_processing_summary(results))
+            print(format_processing_summary(results), flush=True)
             stats = service.get_database_statistics(
                 interval_str, market_type=market_type)
             print_statistics(stats)
-            print(f"\n✅ 歷史數據擴展完成！(間隔: {interval_str})")
-            print("📝 詳細日誌請查看: stock_analyzer.log")
+            print(f"\n✅ 歷史數據擴展完成！(間隔: {interval_str})", flush=True)
+            print("📝 詳細日誌請查看: stock_analyzer.log", flush=True)
             return        # 型態偵測模式
         if pattern_only:
-            print("🔍 K線型態偵測模式 - 完整歷史數據")
-            print(f"🎯 目標股票: {', '.join(stocks)}")
-            print("📋 處理流程:")
-            print("   1️⃣  獲取所有歷史OHLCV數據")
-            print("   2️⃣  進行完整K線型態偵測")
-            print("   3️⃣  更新資料庫中的型態訊號欄位")
+            print("🔍 K線型態偵測模式 - 完整歷史數據", flush=True)
+            print(f"🎯 目標股票: {', '.join(stocks)}", flush=True)
+            print("📋 處理流程:", flush=True)
+            print("   1️⃣  獲取所有歷史OHLCV數據", flush=True)
+            print("   2️⃣  進行完整K線型態偵測", flush=True)
+            print("   3️⃣  更新資料庫中的型態訊號欄位", flush=True)
 
             results = service.update_pattern_signals_for_stocks(
                 stocks,
@@ -200,19 +200,19 @@ def main():
             total_updated = sum(results.values())
             success_count = sum(1 for count in results.values() if count > 0)
 
-            print(f"\n📊 K線型態偵測完成 ({interval_str})")
-            print(f"✅ 成功更新: {success_count}/{len(results)} 個股票")
-            print(f"📈 總更新筆數: {total_updated:,} 筆")
-            print("📝 已完成所有歷史數據的K線型態分析")
+            print(f"\n📊 K線型態偵測完成 ({interval_str})", flush=True)
+            print(f"✅ 成功更新: {success_count}/{len(results)} 個股票", flush=True)
+            print(f"📈 總更新筆數: {total_updated:,} 筆", flush=True)
+            print("📝 已完成所有歷史數據的K線型態分析", flush=True)
             return
 
         # 正常處理模式
-        print(f"🎯 目標股票: {', '.join(stocks)}")
-        print("📋 處理流程:")
-        print("   1️⃣  檢查對應間隔表的現有數據")
-        print("   2️⃣  比對外部數據差異")
-        print("   3️⃣  更新OHLCV數據")
-        print("   4️⃣  重新計算技術指標")
+        print(f"🎯 目標股票: {', '.join(stocks)}", flush=True)
+        print("📋 處理流程:", flush=True)
+        print("   1️⃣  檢查對應間隔表的現有數據", flush=True)
+        print("   2️⃣  比對外部數據差異", flush=True)
+        print("   3️⃣  更新OHLCV數據", flush=True)
+        print("   4️⃣  重新計算技術指標", flush=True)
 
         results = service.process_multiple_stocks(
             symbols=stocks,
@@ -223,16 +223,16 @@ def main():
             market_type=market_type
         )
 
-        print(format_processing_summary(results))
+        print(format_processing_summary(results), flush=True)
         stats = service.get_database_statistics(
             interval_str, market_type=market_type)
         print_statistics(stats)
-        print(f"\n✅ 程式執行完成！(間隔: {interval_str})")
-        print("📝 詳細日誌請查看: stock_analyzer.log")
+        print(f"\n✅ 程式執行完成！(間隔: {interval_str})", flush=True)
+        print("📝 詳細日誌請查看: stock_analyzer.log", flush=True)
         return results
 
     except Exception as e:
-        print(f"\n❌ 程式執行錯誤: {e}")
+        print(f"\n❌ 程式執行錯誤: {e}", flush=True)
         import logging
         logging.error(f"主程式錯誤: {e}", exc_info=True)
 
@@ -306,7 +306,7 @@ def show_help():
   3. 進行K線型態偵測
   4. 將所有結果存入資料庫
 """
-    print(help_text)
+    print(help_text, flush=True)
 
 
 if __name__ == "__main__":

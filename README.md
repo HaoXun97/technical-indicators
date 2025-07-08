@@ -121,12 +121,20 @@ python main.py --show-all-stats
 server = your_server_name
 database = your_database_name
 driver = ODBC Driver 17 for SQL Server
-# 可選的認證資訊
-username = your_username
-password = your_password
+# SQL Server 登入 (若未填寫則使用 Windows 認證登入)
+# username = your_username
+# password = your_password
 
 [import_settings]
 log_level = INFO
+```
+
+### .env 範例
+
+```env
+db_username=your_username
+db_password=your_password
+use_windows_auth=true    # 若使用 Windows 認證則設為 true
 ```
 
 ## 📊 處理結果

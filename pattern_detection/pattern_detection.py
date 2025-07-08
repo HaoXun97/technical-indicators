@@ -140,7 +140,7 @@ def main(input_csv: str = '2330.csv', output_csv: str = 'output.csv') -> None:
     try:
         df = load_csv(input_csv)
     except Exception as e:
-        print(f"讀取資料失敗: {e}")
+        print(f"讀取資料失敗: {e}", flush=True)
         return
     df = detect_patterns(df)
     df['PatternSignals'] = df.apply(combine_patterns, axis=1)
@@ -149,9 +149,9 @@ def main(input_csv: str = '2330.csv', output_csv: str = 'output.csv') -> None:
         'symbol', 'datetime', 'open', 'high',
         'low', 'close', 'PatternSignals'
     ] if c in result.columns]
-    print(result[show_cols].head(10))
+    print(result[show_cols].head(10), flush=True)
     df.to_csv(output_csv, index=False, encoding='utf-8-sig')
-    print(f"\n已儲存 {len(result)} 筆有型態訊號的資料到 {output_csv}")
+    print(f"\n已儲存 {len(result)} 筆有型態訊號的資料到 {output_csv}", flush=True)
 
 
 if __name__ == "__main__":
