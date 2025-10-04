@@ -114,27 +114,17 @@ python main.py --show-all-stats
 
 ## ⚙️ 配置說明
 
-### config.ini 範例
+### .env 檔案
 
-```ini
-[database]
-server = your_server_name
-database = your_database_name
-driver = ODBC Driver 17 for SQL Server
-# SQL Server 登入 (若未填寫則使用 Windows 認證登入)
-# username = your_username
-# password = your_password
-
-[import_settings]
-log_level = INFO
-```
-
-### .env 範例
+可另外新增 .env.local 檔案，程式會優先讀取 .env.local 的設定：
 
 ```env
-db_username=your_username
-db_password=your_password
-use_windows_auth=true    # 若使用 Windows 認證則設為 true
+db_server = localhost      # 資料庫伺服器位址
+db_database = master       # 資料庫名稱
+
+use_windows_auth = true    # 若使用 Windows 認證則設為 true
+db_username = username     # 資料庫使用者名稱
+db_password = password     # 資料庫密碼
 ```
 
 ## 📊 處理結果

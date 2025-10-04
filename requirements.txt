@@ -21,3 +21,4 @@ seaborn>=0.12.0
 # 資料庫連接
 pyodbc
 python-dotenv
+sqlalchemy

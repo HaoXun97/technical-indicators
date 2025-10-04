@@ -16,36 +16,43 @@ class DatabaseConfig:
     """資料庫配置類"""
 
     def __init__(self, config_file: str = "config.ini", database: str = None):
-        # 載入 .env 檔案
-        load_dotenv()
+        # 優先載入 .env.local，若不存在則載入 .env
+        if config_file:
+            config_dir = os.path.dirname(os.path.abspath(config_file))
+        else:
+            config_dir = os.getcwd()
+        local_env_path = os.path.join(config_dir, '.env.local')
+        default_env_path = os.path.join(config_dir, '.env')
+        if os.path.exists(local_env_path):
+            load_dotenv(local_env_path)
+        else:
+            load_dotenv(default_env_path)
 
         # 讀取配置檔案
         self.config = configparser.ConfigParser()
         self.config.read(config_file, encoding='utf-8')
+        env_server = os.getenv('db_server')
+        env_database = os.getenv('db_database')
 
-        # 從配置檔案讀取基本設定
-        self.server = self.config.get('database', 'server')
-        self.database = self.config.get('database', 'database')
-        self.driver = self.config.get('database', 'driver')
-
+        self.server = env_server
+        # 優先使用傳入的 database 參數，否則使用環境變數
         if database:
             self.database = database
+        else:
+            self.database = env_database
+        # driver 仍從 config.ini 讀取（若想也改為 env 可再調整）
+        self.driver = self.config.get('database', 'driver')
 
         # 優先從環境變數讀取帳號密碼，如果沒有則從配置檔案讀取
         env_username = os.getenv('db_username')
         env_password = os.getenv('db_password')
         env_use_windows_auth = os.getenv('use_windows_auth', 'false').lower()
 
-        config_username = self.config.get('database', 'username',
-                                          fallback=None)
-        config_password = self.config.get('database', 'password',
-                                          fallback=None)
-        config_use_windows_auth = self.config.get('database',
-                                                  'use_windows_auth',
-                                                  fallback='false').lower()
+        config_use_windows_auth = self.config.get(
+            'database', 'use_windows_auth', fallback='false').lower()
 
-        self.username = env_username or config_username
-        self.password = env_password or config_password
+        self.username = env_username
+        self.password = env_password
         self.use_windows_auth = (env_use_windows_auth == 'true' or
                                  config_use_windows_auth == 'true')
 
