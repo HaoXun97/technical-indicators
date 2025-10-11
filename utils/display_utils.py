@@ -9,7 +9,7 @@ from typing import Dict, Any
 def print_statistics(stats: Dict[str, Any]):
     """列印指定間隔的資料庫統計資訊"""
     if not stats:
-        print("無法獲取統計資訊")
+        print("無法獲取統計資訊", flush=True)
         return
 
     table_name = stats.get('table_name', '未知表格')

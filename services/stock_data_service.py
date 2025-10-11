@@ -518,14 +518,14 @@ class StockDataService:
 
         for symbol in symbols:
             try:
-                self.reporter.progress(f"開始處理 {symbol} 的K線型態偵測")
+                self.reporter.progress(f"開始處理 {symbol} 的K 線型態偵測")
 
                 # 獲取OHLCV數據
                 if recent_only:
                     # 僅獲取最近30筆數據
                     ohlcv_data = self.repository.get_latest_ohlcv_data(
                         symbol, interval, days=30, market_type=market_type)
-                    self.reporter.info(f"{symbol}: 獲取最近30筆數據進行型態偵測")
+                    self.reporter.info(f"{symbol}: 獲取最近 30 筆數據進行型態偵測")
                 else:
                     # 獲取所有歷史數據
                     ohlcv_data = self.repository.get_all_ohlcv_data(

@@ -9,26 +9,26 @@
 1. **智能數據更新**：自動檢查資料庫與外部數據的差異，只更新需要的部分
 2. **分離式技術指標計算及型態辨識**：先更新 OHLCV 數據，再計算技術指標及型態
 3. **模組化設計**：清晰的分層架構，易於維護和擴展
+4. **智能訊號分析**：全新的訊號分析模組，提供多種技術指標訊號和交易訊號生成
 
 ## 🏗️ 系統架構
 
 ```
-├── config/                 # 配置模組
-│   └── database_config.py  # 資料庫配置與連接管理
-├── providers/              # 數據提供者
-│   └── stock_data_provider.py  # 外部API數據獲取
-├── calculators/            # 計算器
-│   └── technical_indicators.py  # 技術指標計算
-├── repositories/           # 資料庫操作
-│   └── stock_data_repository.py  # 數據存儲與比對
-├── services/               # 業務服務層
-│   └── stock_data_service.py  # 主要業務邏輯
-├── utils/                  # 工具模組
-│   └── display_utils.py    # 統計顯示工具
-├── pattern_detection/      # K 線型態辨識
-│   └── pattern_detection.py  # 基本型態辨識
-├── main.py                 # 主程式入口
-└── config.ini              # 配置檔案
+├── config/                         # 配置模組
+├── providers/                      # 數據提供者
+├── calculators/                    # 計算器
+├── repositories/                   # 資料庫操作
+├── services/                       # 業務服務層
+├── utils/                          # 工具模組
+├── pattern_detection/              # K 線型態辨識
+├── signals/                        # 訊號分析模組
+├── output/                         # 輸出目錄
+├── main.py                         # 主程式入口
+├── Indicators.py                   # 技術指標計算
+├── signals.py                      # 訊號分析模組
+├── config.ini                      # 配置檔案
+├── .env                            # 環境變數配置
+└── requirements.txt                # 依賴套件清單
 ```
 
 ## ⚡ 核心功能
@@ -38,12 +38,13 @@
 ```python
 # 系統會自動執行以下流程：
 1. 檢查資料庫中現有數據
-2. 從yfinance獲取最新數據
-3. 比對最近30天的數據差異
-4. 只更新有差異的OHLCV數據
+2. 從 yfinance 獲取最新數據
+3. 比對最近 30 天的數據差異
+4. 只更新有差異的 OHLCV 數據
 5. 重新計算並更新技術指標
 6. 辨識 K 線型態
-7. 將結果存入資料庫
+7. 執行訊號分析和交易訊號生成
+8. 將結果存入資料庫
 ```
 
 ### 2. 數據比對機制
@@ -67,6 +68,18 @@
 ### 4. K 線型態
 
 使用 ta-lib 辨識基本 K 線型態
+
+### 5. 訊號分析系統
+
+全新的訊號分析模組，提供：
+
+- **多種技術指標訊號**：MA 交叉、布林通道、MACD、RSI、KD、CCI、威廉指標等
+- **趨勢判斷**：自動識別趨勢方向和強度
+- **背離偵測**：MACD 背離訊號識別
+- **異常偵測**：價格和成交量異常識別
+- **支撐阻力位**：動態計算支撐和阻力位
+- **交易訊號生成**：綜合多個指標生成買賣訊號
+- **訊號權重系統**：不同訊號具有不同權重，提高準確性
 
 ## 🚀 使用方式
 
@@ -96,6 +109,12 @@ python main.py --expand-history 2330
 # 辨識歷史 K 線型態
 python main.py --pattern 2330
 
+# 執行訊號分析（預設自動執行）
+python main.py --signals 2330
+
+# 指定訊號分析輸出路徑
+python main.py --signals --signals-output ./output/ 2330
+
 # 顯示所有資料表的統計資訊
 python main.py --show-all-stats
 ```
@@ -119,12 +138,17 @@ python main.py --show-all-stats
 可另外新增 .env.local 檔案，程式會優先讀取 .env.local 的設定：
 
 ```env
-db_server = localhost      # 資料庫伺服器位址
-db_database = master       # 資料庫名稱
-
+# 資料庫配置
 use_windows_auth = true    # 若使用 Windows 認證則設為 true
-db_username = username     # 資料庫使用者名稱
-db_password = password     # 資料庫密碼
+
+MSSQL_SERVER = localhost   # 資料庫伺服器位址
+MSSQL_DATABASE = master    # 資料庫名稱
+MSSQL_TABLE = stock_data_1d # 預設資料表
+MSSQL_USER = username      # 資料庫使用者名稱
+MSSQL_PASSWORD = password  # 資料庫密碼
+
+# 輸出配置
+OUTPUT_CSV = ./output/     # CSV 輸出目錄
 ```
 
 ## 📊 處理結果
@@ -142,6 +166,18 @@ db_password = password     # 資料庫密碼
 📊 新增記錄: 0 筆
 🔄 更新記錄: 15 筆
 📈 技術指標更新: 750 筆
+
+訊號分析結果:
+📊 開始執行訊號分析
+[1/1] 分析 2330...
+✅ 2330 訊號分析完成
+📁 輸出檔案: ./output/signals_2330_stock_data_1d.csv
+
+總執行時間: 12.34 秒
+- 資料讀取: 2.10秒 (17.0%)
+- 指標計算: 8.45秒 (68.5%)
+- 訊號生成: 1.23秒 (10.0%)
+- 資料儲存: 0.56秒 (4.5%)
 ```
 
 ## 📝 日誌記錄
@@ -175,24 +211,7 @@ db_password = password     # 資料庫密碼
 
 ## 📚 依賴套件
 
-```
-yfinance
-pandas
-numpy
-talib
-sqlalchemy
-pyodbc
-configparser
-```
-
-## 🔮 未來擴展
-
-- 支援更多技術指標
-- 增加數據驗證機制
-- 實作數據回測功能
-- 添加圖表視覺化
-- 支援多資料來源
-- 辨識複雜型態
+詳見 [requirements.txt](./requirements.txt)
 
 ## ⚠️ 舊版 (CSV 儲存模式)
 

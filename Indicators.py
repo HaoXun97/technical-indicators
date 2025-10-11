@@ -867,22 +867,22 @@ class AnalysisReporter:
     @staticmethod
     def print_analysis_summary(results: Dict[str, Any]) -> None:
         """打印分析摘要"""
-        print("\n=== 技術分析結果摘要 ===")
+        print("\n=== 技術分析結果摘要 ===", flush=True)
 
         for symbol, data in results.items():
             if "error" in data:
-                print(f"\n❌ {symbol}: {data['error']}")
+                print(f"\n❌ {symbol}: {data['error']}", flush=True)
                 continue
 
-            print(f"\n📊 {symbol} ({data['date']}):")
+            print(f"\n📊 {symbol} ({data['date']}):", flush=True)
             price: Any = data["price"]
             print(
                 f"   價格: 開 {price['open']:.2f} | "
                 f"高 {price['high']:.2f} | "
                 f"低 {price['low']:.2f} | "
-                f"收 {price['close']:.2f}"
+                f"收 {price['close']:.2f}", flush=True
             )
-            print(f"   成交量: {price['volume']:,}")
+            print(f"   成交量: {price['volume']:,}", flush=True)
 
             indicators: Any = data["indicators"]
 
@@ -892,9 +892,9 @@ class AnalysisReporter:
                 rsi_status: Literal["超買", "超賣", "正常"] = (
                     "超買" if rsi > 70 else "超賣" if rsi < 30 else "正常"
                 )
-                print(f"   RSI(14): {rsi:.2f} ({rsi_status})")
+                print(f"   RSI(14): {rsi:.2f} ({rsi_status})", flush=True)
             else:
-                print("   RSI(14): N/A")
+                print("   RSI(14): N/A", flush=True)
 
             if indicators.get("DIF") and indicators.get("MACD"):
                 macd_trend: Literal["多頭", "空頭"] = (
@@ -902,10 +902,10 @@ class AnalysisReporter:
                 )
                 print(
                     f"   MACD: {indicators['MACD']:.4f} | "
-                    f"DIF: {indicators['DIF']:.4f} ({macd_trend})"
+                    f"DIF: {indicators['DIF']:.4f} ({macd_trend})", flush=True
                 )
             else:
-                print("   MACD: N/A")
+                print("   MACD: N/A", flush=True)
 
             if indicators.get("K") and indicators.get("D"):
                 kd_trend: Literal["多頭", "空頭"] = (
@@ -920,13 +920,14 @@ class AnalysisReporter:
                     print(
                         f"   KDJ: K={indicators['K']:.2f}, "
                         f"D={indicators['D']:.2f}, "
-                        f"J={j_value:.2f} ({kd_trend}, J:{j_signal})"
+                        f"J={j_value:.2f} ({kd_trend}, J:{j_signal})",
+                        flush=True
                     )
                 else:
                     print(
                         f"   KDJ: K={indicators['K']:.2f}, "
                         f"D={indicators['D']:.2f}, "
-                        f"J=N/A ({kd_trend})"
+                        f"J=N/A ({kd_trend})", flush=True
                     )
 
             if (indicators.get("BB_Upper") and
@@ -941,10 +942,11 @@ class AnalysisReporter:
                 print(
                     f"   布林通道: 上軌: {indicators['BB_Upper']:.2f}, "
                     f"中軌: {indicators['BB_Middle']:.2f}, "
-                    f"下軌: {indicators['BB_Lower']:.2f} | 趨勢: {BB_Trend}"
+                    f"下軌: {indicators['BB_Lower']:.2f} | 趨勢: {BB_Trend}",
+                    flush=True
                 )
             else:
-                print("   布林通道: N/A")
+                print("   布林通道: N/A", flush=True)
 
             if (indicators.get("MA5") and indicators.get("MA10") and
                     indicators.get("MA20") and indicators.get("MA60")):
@@ -957,16 +959,17 @@ class AnalysisReporter:
                     f"   MA5: {indicators['MA5']:.2f} | "
                     f"MA10: {indicators['MA10']:.2f} | "
                     f"MA20: {indicators['MA20']:.2f} | "
-                    f"MA60: {indicators['MA60']:.2f} | 趨勢: {ma_trend}"
+                    f"MA60: {indicators['MA60']:.2f} | 趨勢: {ma_trend}",
+                    flush=True
                 )
             else:
-                print("   移動平均線: N/A")
+                print("   移動平均線: N/A", flush=True)
 
             # 修復：檢查 time_range 是否存在，如果不存在則顯示基本信息
             time_range_info = data.get('time_range', 'N/A')
             print(
                 f"   數據筆數: {data['total_records']} ({time_range_info}) | "
-                f"間隔: {data['interval']}")
+                f"間隔: {data['interval']}", flush=True)
 
 
 def main() -> None:
@@ -982,12 +985,14 @@ def main() -> None:
         # 從命令行參數獲取股票代號
         if len(sys.argv) > 1:
             target_stocks = sys.argv[1:]
-            print(f"ℹ️ 使用命令行傳入的股票代號: {', '.join(target_stocks)}")
+            print(f"ℹ️ 使用命令行傳入的股票代號: {', '.join(target_stocks)}", flush=True)
         else:
             target_stocks = default_stocks
-            print(f"ℹ️ 未提供命令行參數，使用預設股票代號: {', '.join(target_stocks)}")
+            print(
+                f"ℹ️ 未提供命令行參數，使用預設股票代號: {', '.join(target_stocks)}",
+                flush=True)
 
-        print("🚀 開始技術分析")
+        print("🚀 開始技術分析", flush=True)
 
         # 執行分析
         results: dict[str, Any] = analyzer.analyze_multiple_stocks(
@@ -1003,9 +1008,9 @@ def main() -> None:
         saved_files: list[str] = analyzer.save_analysis_results(
             results, "json")
 
-        print(f"\n💾 已保存 {len(saved_files)} 個檔案:")
+        print(f"\n💾 已保存 {len(saved_files)} 個檔案:", flush=True)
         for file in saved_files:
-            print(f"   📄 {file}")
+            print(f"   📄 {file}", flush=True)
 
     except Exception as e:
         logging.error(f"執行錯誤: {e}")

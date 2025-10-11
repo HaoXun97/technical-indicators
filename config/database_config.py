@@ -31,8 +31,8 @@ class DatabaseConfig:
         # 讀取配置檔案
         self.config = configparser.ConfigParser()
         self.config.read(config_file, encoding='utf-8')
-        env_server = os.getenv('db_server')
-        env_database = os.getenv('db_database')
+        env_server = os.getenv('MSSQL_SERVER')
+        env_database = os.getenv('MSSQL_DATABASE')
 
         self.server = env_server
         # 優先使用傳入的 database 參數，否則使用環境變數
@@ -44,8 +44,8 @@ class DatabaseConfig:
         self.driver = self.config.get('database', 'driver')
 
         # 優先從環境變數讀取帳號密碼，如果沒有則從配置檔案讀取
-        env_username = os.getenv('db_username')
-        env_password = os.getenv('db_password')
+        env_username = os.getenv('MSSQL_USER')
+        env_password = os.getenv('MSSQL_PASSWORD')
         env_use_windows_auth = os.getenv('use_windows_auth', 'false').lower()
 
         config_use_windows_auth = self.config.get(
@@ -85,13 +85,14 @@ class DatabaseConfig:
 
     def debug_config(self):
         """除錯：顯示目前的配置值"""
-        print(f"Debug - Server: {self.server}")
-        print(f"Debug - Database: {self.database}")
-        print(f"Debug - Driver: {self.driver}")
-        print(f"Debug - Username: {repr(self.username)}")
-        print(f"Debug - Password: {repr(self.password)}")
-        print(f"Debug - Use Windows Auth: {self.use_windows_auth}")
-        print(f"Debug - Connection URL: {self.get_sqlalchemy_url()}")
+        print(f"Debug - Server: {self.server}", flush=True)
+        print(f"Debug - Database: {self.database}", flush=True)
+        print(f"Debug - Driver: {self.driver}", flush=True)
+        print(f"Debug - Username: {repr(self.username)}", flush=True)
+        print(f"Debug - Password: {repr(self.password)}", flush=True)
+        print(f"Debug - Use Windows Auth: {self.use_windows_auth}", flush=True)
+        print(
+            f"Debug - Connection URL: {self.get_sqlalchemy_url()}", flush=True)
 
 
 class DatabaseManager:
